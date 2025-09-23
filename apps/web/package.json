@@ -3,9 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "astro dev --port 4321",
+    "dev": "astro dev --port 4321 --host",
     "build": "astro build",
-    "start": "astro preview"
+    "start": "astro preview --port 4321 --host"
   },
   "dependencies": {
     "astro": "^4.15.3",
