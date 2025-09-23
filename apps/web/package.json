@@ -1,0 +1,14 @@
+{
+  "name": "@originals/web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev --port 4321",
+    "build": "astro build",
+    "start": "astro preview"
+  },
+  "dependencies": {
+    "astro": "^4.15.3",
+    "@originals/dutch": "workspace:*"
+  }
+}
