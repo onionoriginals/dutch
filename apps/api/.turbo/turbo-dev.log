@@ -1,8 +1,0 @@
-$ bun --hot src/index.ts
-1 | preload = []
-              ^
-error: Expected preload to be an array
-    at /workspace/apps/api/bunfig.toml:1:11
-
-Invalid Bunfig: failed to load bunfig
-error: script "dev" exited with code 1

@@ -23,7 +23,7 @@
         "installCommand": "bun install --frozen-lockfile",
         "buildCommand": "bun run build"
       },
-      "startCommand": "bun x astro preview --port $PORT --host 0.0.0.0",
+      "startCommand": "bun run start",
       "healthcheckPath": "/"
     }
   ]

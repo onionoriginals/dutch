@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "astro dev --port 4321 --host",
     "build": "astro build",
-    "start": "astro preview --port 4321 --host --allowed-hosts dutch-production.up.railway.app"
+    "start": "bun run server.ts"
   },
   "dependencies": {
     "astro": "^4.15.3",
