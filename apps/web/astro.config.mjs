@@ -12,7 +12,7 @@ export default defineConfig({
   vite: {
     server: {
       allowedHosts: [
-        'dutch-production.up.railway.app'
+        '.dutch-production.up.railway.app'
       ]
     }
   }
