@@ -1,7 +1,14 @@
 const DEFAULT_PORT = 4321;
-const HOSTNAME = process.env.HOST || "0.0.0.0";
+const HOSTNAME = process.env.HOST || "::";
 const PORT = Number(process.env.PORT || DEFAULT_PORT);
 const DIST_DIR = "dist";
+
+// Prefer internal networking on Railway. Falls back to local dev.
+const API_INTERNAL_ORIGIN =
+  process.env.API_INTERNAL_ORIGIN ||
+  (process.env.RAILWAY_PRIVATE_NETWORK || process.env.RAILWAY || process.env.RAILWAY_ENVIRONMENT
+    ? "http://api.railway.internal"
+    : "http://127.0.0.1:3000");
 
 function isLikelyHashedAsset(pathname: string): boolean {
   if (pathname.includes("/_astro/")) return true;
@@ -44,6 +51,34 @@ Bun.serve({
   async fetch(req) {
     const url = new URL(req.url);
     let pathname = sanitizePath(url.pathname);
+
+    // Reverse proxy: forward /api/* to the API service
+    if (url.pathname.startsWith("/api")) {
+      const apiPath = url.pathname.replace(/^\/api/, "") || "/";
+      const targetUrl = new URL(API_INTERNAL_ORIGIN);
+      targetUrl.pathname = apiPath;
+      targetUrl.search = url.search;
+
+      const headers = new Headers(req.headers);
+      headers.delete("host");
+      headers.delete("connection");
+      headers.delete("transfer-encoding");
+
+      const init: RequestInit = {
+        method: req.method,
+        headers,
+      };
+      if (req.method !== "GET" && req.method !== "HEAD") {
+        init.body = req.body as any;
+      }
+
+      const apiResponse = await fetch(targetUrl.toString(), init as any);
+      // Return response as-is (streaming body)
+      return new Response(apiResponse.body, {
+        status: apiResponse.status,
+        headers: apiResponse.headers,
+      });
+    }
 
     // Try the exact file first
     const direct = await getFileResponse(pathname);
