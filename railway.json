@@ -1,0 +1,30 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "project": {
+    "name": "originals-monorepo"
+  },
+  "services": [
+    {
+      "name": "api",
+      "rootDirectory": "apps/api",
+      "build": {
+        "builder": "NIXPACKS",
+        "installCommand": "bun install --frozen-lockfile",
+        "buildCommand": "bun run build"
+      },
+      "startCommand": "bun run start",
+      "healthcheckPath": "/"
+    },
+    {
+      "name": "web",
+      "rootDirectory": "apps/web",
+      "build": {
+        "builder": "NIXPACKS",
+        "installCommand": "bun install --frozen-lockfile",
+        "buildCommand": "bun run build"
+      },
+      "startCommand": "bun x astro preview --port $PORT --host",
+      "healthcheckPath": "/"
+    }
+  ]
+}

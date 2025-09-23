@@ -9,5 +9,6 @@ const app = new Elysia()
   .get('/', () => ({ ok: true }))
   .get('/hello', () => ({ message: helloDutch('World') }))
 
-app.listen({ port: 3000, hostname: '0.0.0.0' })
-console.log(`API running on http://localhost:3000`)
+const port = Bun.env.PORT ? Number(Bun.env.PORT) : 3000
+app.listen({ port, hostname: '0.0.0.0' })
+console.log(`API running on http://localhost:${port}`)
