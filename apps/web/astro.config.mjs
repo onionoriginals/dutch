@@ -8,12 +8,5 @@ export default defineConfig({
   preview: {
     host: true,
     port: 4321
-  },
-  vite: {
-    server: {
-      allowedHosts: [
-        '.dutch-production.up.railway.app'
-      ]
-    }
   }
 })
