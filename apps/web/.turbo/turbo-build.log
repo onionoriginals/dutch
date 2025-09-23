@@ -1,0 +1,17 @@
+$ astro build
+18:07:00 [types] Generated 386ms
+18:07:00 [build] output: "static"
+18:07:00 [build] directory: /workspace/apps/web/dist/
+18:07:00 [build] Collecting build info...
+18:07:00 [build] ✓ Completed in 445ms.
+18:07:00 [build] Building static entrypoints...
+18:07:02 [vite] ✓ built in 1.89s
+18:07:02 [build] ✓ Completed in 2.00s.
+
+ generating static routes 
+18:07:02 ▶ src/pages/index.astro
+18:07:02   └─ /index.html (+19ms)
+18:07:02 ✓ Completed in 40ms.
+
+18:07:02 [build] 1 page(s) built in 2.52s
+18:07:02 [build] Complete!
