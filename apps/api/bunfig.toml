@@ -1,4 +1,1 @@
-preload = []
-
-[[preloads]]
-path = "./src/index.ts"
+preload = ["./src/index.ts"]

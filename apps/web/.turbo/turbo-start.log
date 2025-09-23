@@ -1,0 +1,13 @@
+[0m[2m[35m$[0m [2m[1mastro preview[0m
+[34m▶ Astro collects anonymous usage data.[39m
+  This information helps us improve Astro.
+  Run "astro telemetry disable" to opt-out.
+  [36m[4mhttps://astro.build/telemetry[24m[39m
+
+[preview] The output directory /workspace/apps/web/dist/ does not exist. Did you run `astro build`?
+  [1mLocation:[22m
+    [4m/workspace/node_modules/astro/dist/core/preview/index.js:31:13[24m
+  [1mStack trace:[22m
+[2m    at preview (file:///workspace/node_modules/astro/dist/core/preview/index.js:31:13)
+    at async runCommand (file:///workspace/node_modules/astro/dist/cli/index.js:152:22)[22m
+[0m[31merror[0m[2m:[0m script [1m"start"[0m exited with code 1[0m
