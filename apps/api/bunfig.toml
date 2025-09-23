@@ -1,1 +1,1 @@
-preload = []
+preload = ["./src/index.ts"]
