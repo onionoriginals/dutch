@@ -9,9 +9,12 @@
     "test": "bun test"
   },
   "dependencies": {
-    "elysia": "^1.1.29",
-    "@elysiajs/swagger": "^1.1.1",
     "@elysiajs/cors": "^1.0.4",
-    "@originals/dutch": "workspace:*"
+    "@elysiajs/swagger": "^1.1.1",
+    "@originals/dutch": "workspace:*",
+    "bitcoinjs-lib": "^6.1.7",
+    "ecpair": "^3.0.0",
+    "elysia": "^1.1.29",
+    "tiny-secp256k1": "^2.2.4"
   }
 }

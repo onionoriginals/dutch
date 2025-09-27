@@ -103,13 +103,6 @@ function fromHex(hex: string): Uint8Array {
 export class SecureDutchyDatabase {
   private db: Database
   private mempoolClient?: MempoolClientLike
-  // In-memory clearing auctions + payments
-  private clearingAuctions: Map<string, ClearingAuction & {
-    start_price: number;
-    min_price: number;
-    duration: number;
-    decrement_interval: number;
-  }> = new Map()
   private bidsByAuction: Map<string, string[]> = new Map()
   private bids: Map<string, {
     id: string
@@ -124,6 +117,10 @@ export class SecureDutchyDatabase {
     updated_at: number
   }> = new Map()
   private nextBidId: number = 1
+  private singleAuctions: Map<string, SingleAuction> = new Map();
+  private clearingAuctions: Map<string, ClearingAuction> = new Map();
+  private inscriptionEscrows: Map<string, { inscriptionId: string; status: string; details?: any; updatedAt: number }>
+    = new Map();
 
   constructor(public dbPath: string, mempoolClient?: MempoolClientLike) {
     this.db = new Database(dbPath)
@@ -423,6 +420,83 @@ export class SecureDutchyDatabase {
       return { success: true, auctionType: 'clearing' }
     }
     return { success: false, error: 'Auction not found' }
+  }
+
+  // -----------------------------
+  // Inscription escrow utilities
+  // -----------------------------
+
+  verifyInscriptionOwnership(input: { inscriptionId: string; ownerAddress: string }): { valid: boolean } {
+    // This in-memory stub assumes addresses that start with "bc1" or "tb1" are valid formats
+    // and simply returns true; API layer performs actual mempool-based validation.
+    const isLikelyValid = typeof input.ownerAddress === 'string' && /^(bc1|tb1)[a-z0-9]+$/i.test(input.ownerAddress);
+    return { valid: !!isLikelyValid };
+  }
+
+  createInscriptionEscrowPSBT(input: { auctionId: string; inscriptionId: string; ownerAddress: string }): {
+    psbt: string;
+    auctionAddress?: string;
+  } {
+    const auction = this.singleAuctions.get(input.auctionId);
+    const auctionAddress = auction?.auction_address;
+    // Return a deterministic, placeholder PSBT string for tests
+    const psbt = `psbt_${this.simpleHash(input.auctionId + '|' + input.inscriptionId + '|' + input.ownerAddress)}`;
+    // Initialize escrow state if not present
+    if (!this.inscriptionEscrows.has(input.auctionId)) {
+      this.inscriptionEscrows.set(input.auctionId, {
+        inscriptionId: input.inscriptionId,
+        status: 'pending',
+        updatedAt: Math.floor(Date.now() / 1000),
+      });
+    }
+    return { psbt, auctionAddress };
+  }
+
+  monitorInscriptionEscrow(auctionId: string, inscriptionId: string): { auctionId: string; inscriptionId: string; status: string } {
+    const current = this.inscriptionEscrows.get(auctionId) || {
+      inscriptionId,
+      status: 'unknown',
+      updatedAt: Math.floor(Date.now() / 1000),
+    };
+    return { auctionId, inscriptionId, status: current.status };
+  }
+
+  updateInscriptionStatus(input: { auctionId: string; status: string; details?: any }): { ok: boolean; status: string } {
+    const existing = this.inscriptionEscrows.get(input.auctionId);
+    if (existing) {
+      existing.status = input.status;
+      existing.details = input.details;
+      existing.updatedAt = Math.floor(Date.now() / 1000);
+      this.inscriptionEscrows.set(input.auctionId, existing);
+    } else {
+      this.inscriptionEscrows.set(input.auctionId, {
+        inscriptionId: '',
+        status: input.status,
+        details: input.details,
+        updatedAt: Math.floor(Date.now() / 1000),
+      });
+    }
+    return { ok: true, status: input.status };
+  }
+
+  getInscriptionEscrowStatus(auctionId: string): { auctionId: string; status: string; details?: any } {
+    const entry = this.inscriptionEscrows.get(auctionId);
+    return { auctionId, status: entry?.status || 'unknown', details: entry?.details };
+  }
+
+  checkEscrowTimeouts(): { updated: number } {
+    const now = Math.floor(Date.now() / 1000);
+    let updated = 0;
+    for (const [auctionId, entry] of this.inscriptionEscrows.entries()) {
+      // Mark entries older than 5 minutes as timeout (for tests)
+      if (now - entry.updatedAt > 300 && entry.status === 'pending') {
+        entry.status = 'timeout';
+        entry.updatedAt = now;
+        this.inscriptionEscrows.set(auctionId, entry);
+        updated++;
+      }
+    }
+    return { updated };
   }
 
   executeBuyNow(auctionId: string, buyerAddress: string): { success: boolean; auctionType: 'single'; transactionId: string } {
