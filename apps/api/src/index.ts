@@ -9,12 +9,12 @@ const app = new Elysia()
   .get('/', () => ({ ok: true }))
   .get('/hello', () => ({ message: helloDutch('World') }))
 
-const hostname = Bun.env.HOST ?? '0.0.0.0'
+const hostname = Bun.env.HOST ?? '::'
 let port = Bun.env.PORT ? parseInt(Bun.env.PORT, 10) : 3000
 if (isNaN(port)) {
   console.error('Invalid PORT environment variable. Using default port 3000.')
   port = 3000
 }
 app.listen({ port, hostname })
-const advertisedHost = hostname === '0.0.0.0' ? '127.0.0.1' : hostname
+const advertisedHost = hostname === '::' ? '[::1]' : hostname
 console.log(`API listening on http://${advertisedHost}:${port}`)
