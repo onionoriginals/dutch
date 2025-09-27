@@ -51,6 +51,10 @@ export interface ClearingAuction {
   quantity: number;
   itemsRemaining: number;
   status: 'active' | 'sold' | 'expired';
+  start_price: number;
+  min_price: number;
+  duration: number;
+  decrement_interval: number;
   created_at: number;
   updated_at: number;
 }
@@ -58,6 +62,20 @@ export interface ClearingAuction {
 export class SecureDutchyDatabase {
   private singleAuctions: Map<string, SingleAuction> = new Map();
   private clearingAuctions: Map<string, ClearingAuction> = new Map();
+  private bidsByAuction: Map<string, string[]> = new Map();
+  private bids: Map<string, {
+    id: string;
+    auctionId: string;
+    bidderAddress: string;
+    bidAmount: number;
+    quantity: number;
+    status: 'placed' | 'payment_pending' | 'payment_confirmed' | 'settled';
+    escrowAddress?: string;
+    transactionId?: string;
+    created_at: number;
+    updated_at: number;
+  }> = new Map();
+  private nextBidId: number = 1;
 
   constructor(public dbPath: string) {}
 
@@ -115,10 +133,15 @@ export class SecureDutchyDatabase {
       quantity: input.quantity,
       itemsRemaining: input.quantity,
       status: 'active',
+      start_price: input.start_price,
+      min_price: input.min_price,
+      duration: input.duration,
+      decrement_interval: input.decrement_interval,
       created_at: now,
       updated_at: now,
     };
     this.clearingAuctions.set(input.id, auction);
+    this.bidsByAuction.set(input.id, []);
     return {
       success: true,
       auctionDetails: { ...auction, auction_type: 'clearing' },
@@ -136,6 +159,24 @@ export class SecureDutchyDatabase {
     }
     auction.updated_at = Math.floor(Date.now() / 1000);
     this.clearingAuctions.set(auctionId, auction);
+
+    // record a bid entry as placed (without payment info)
+    const bidId = `b${this.nextBidId++}`;
+    const now = Math.floor(Date.now() / 1000);
+    const bid = {
+      id: bidId,
+      auctionId,
+      bidderAddress,
+      bidAmount: 0,
+      quantity: qty,
+      status: 'placed' as const,
+      created_at: now,
+      updated_at: now,
+    };
+    this.bids.set(bidId, bid);
+    const list = this.bidsByAuction.get(auctionId) || [];
+    list.push(bidId);
+    this.bidsByAuction.set(auctionId, list);
     return { success: true, itemsRemaining: auction.itemsRemaining, auctionStatus: auction.status };
   }
 
@@ -143,6 +184,134 @@ export class SecureDutchyDatabase {
     const auction = this.clearingAuctions.get(auctionId);
     if (!auction) throw new Error('Clearing auction not found');
     return { auction, progress: { itemsRemaining: auction.itemsRemaining } };
+  }
+
+  getAuctionBids(auctionId: string): { bids: any[] } {
+    const ids = this.bidsByAuction.get(auctionId) || [];
+    const bids = ids.map((id) => this.bids.get(id)).filter(Boolean) as any[];
+    return { bids };
+  }
+
+  calculateSettlement(auctionId: string): {
+    auctionId: string;
+    clearingPrice: number;
+    totalQuantity: number;
+    itemsRemaining: number;
+    allocations: Array<{ bidId: string; bidderAddress: string; quantity: number }>;
+  } {
+    const auction = this.clearingAuctions.get(auctionId);
+    if (!auction) throw new Error('Clearing auction not found');
+    const sold = auction.quantity - auction.itemsRemaining;
+    const fractionSold = auction.quantity > 0 ? sold / auction.quantity : 0;
+    const priceDrop = (auction.start_price - auction.min_price) * fractionSold;
+    const clearingPrice = Math.max(auction.min_price, Math.round(auction.start_price - priceDrop));
+    const confirmedBids = (this.bidsByAuction.get(auctionId) || [])
+      .map((id) => this.bids.get(id)!)
+      .filter((b) => b.status === 'payment_confirmed' || b.status === 'settled')
+      .sort((a, b) => a.created_at - b.created_at);
+    let remaining = auction.quantity;
+    const allocations: Array<{ bidId: string; bidderAddress: string; quantity: number }> = [];
+    for (const bid of confirmedBids) {
+      if (remaining <= 0) break;
+      const alloc = Math.min(remaining, bid.quantity);
+      if (alloc > 0) {
+        allocations.push({ bidId: bid.id, bidderAddress: bid.bidderAddress, quantity: alloc });
+        remaining -= alloc;
+      }
+    }
+    return {
+      auctionId,
+      clearingPrice,
+      totalQuantity: auction.quantity,
+      itemsRemaining: auction.itemsRemaining,
+      allocations,
+    };
+  }
+
+  markBidsSettled(auctionId: string, bidIds: string[]): { success: boolean; updated: number } {
+    const ids = this.bidsByAuction.get(auctionId) || [];
+    let updated = 0;
+    for (const bidId of bidIds) {
+      if (!ids.includes(bidId)) continue;
+      const bid = this.bids.get(bidId);
+      if (!bid) continue;
+      bid.status = 'settled';
+      bid.updated_at = Math.floor(Date.now() / 1000);
+      this.bids.set(bidId, bid);
+      updated++;
+    }
+    return { success: true, updated };
+  }
+
+  createBidPaymentPSBT(auctionId: string, bidderAddress: string, bidAmount: number, quantity: number = 1): { escrowAddress: string; bidId: string } {
+    const auction = this.clearingAuctions.get(auctionId);
+    if (!auction) throw new Error('Clearing auction not found');
+    const bidId = `b${this.nextBidId++}`;
+    const hash = this.simpleHash(`${auctionId}:${bidderAddress}:${bidId}`);
+    const suffix = hash.slice(0, 38).padEnd(38, 'x');
+    const escrowAddress = `tb1q${suffix}`;
+    const now = Math.floor(Date.now() / 1000);
+    const bid = {
+      id: bidId,
+      auctionId,
+      bidderAddress,
+      bidAmount,
+      quantity: Math.max(1, Math.floor(quantity)),
+      status: 'payment_pending' as const,
+      escrowAddress,
+      created_at: now,
+      updated_at: now,
+    };
+    this.bids.set(bidId, bid);
+    const list = this.bidsByAuction.get(auctionId) || [];
+    list.push(bidId);
+    this.bidsByAuction.set(auctionId, list);
+    return { escrowAddress, bidId };
+  }
+
+  confirmBidPayment(bidId: string, transactionId: string): { success: boolean } {
+    const bid = this.bids.get(bidId);
+    if (!bid) throw new Error('Bid not found');
+    bid.transactionId = transactionId;
+    bid.status = 'payment_confirmed';
+    bid.updated_at = Math.floor(Date.now() / 1000);
+    this.bids.set(bidId, bid);
+    return { success: true };
+  }
+
+  processAuctionSettlement(auctionId: string): { success: boolean; artifacts: Array<{ bidId: string; inscriptionId: string; toAddress: string }> } {
+    const auction = this.clearingAuctions.get(auctionId);
+    if (!auction) throw new Error('Clearing auction not found');
+    const settlement = this.calculateSettlement(auctionId);
+    const artifacts: Array<{ bidId: string; inscriptionId: string; toAddress: string }> = [];
+    let inscriptionIdx = 0;
+    for (const alloc of settlement.allocations) {
+      const bid = this.bids.get(alloc.bidId);
+      if (!bid) continue;
+      for (let i = 0; i < alloc.quantity && inscriptionIdx < auction.inscription_ids.length; i++) {
+        const inscriptionId = auction.inscription_ids[inscriptionIdx++];
+        artifacts.push({ bidId: bid.id, inscriptionId, toAddress: bid.bidderAddress });
+      }
+      bid.status = 'settled';
+      bid.updated_at = Math.floor(Date.now() / 1000);
+      this.bids.set(bid.id, bid);
+    }
+    auction.status = inscriptionIdx >= auction.quantity ? 'sold' : auction.status;
+    auction.updated_at = Math.floor(Date.now() / 1000);
+    this.clearingAuctions.set(auctionId, auction);
+    return { success: true, artifacts };
+  }
+
+  getBidDetails(bidId: string): any {
+    const bid = this.bids.get(bidId);
+    if (!bid) throw new Error('Bid not found');
+    return bid;
+  }
+
+  getAuctionBidsWithPayments(auctionId: string): { bids: any[] } {
+    const ids = this.bidsByAuction.get(auctionId) || [];
+    const bids = ids.map((id) => this.bids.get(id)).filter(Boolean) as any[];
+    return { bids };
   }
 
   // Fee utilities (stubbed with positive values for tests)
