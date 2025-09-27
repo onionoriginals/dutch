@@ -13,11 +13,13 @@ import * as bip39 from 'bip39'
 import { BIP32Factory, BIP32Interface } from 'bip32'
 import * as tinySecp256k1 from 'tiny-secp256k1'
 import * as bitcoin from 'bitcoinjs-lib'
+import { initEccLib } from 'bitcoinjs-lib'
 
 export type BitcoinNetwork = 'mainnet' | 'testnet' | 'signet' | 'regtest';
 
 export function getBitcoinNetwork(): BitcoinNetwork {
-  const env = String((globalThis as any).process?.env?.BITCOIN_NETWORK || '').toLowerCase();
+  const envRaw = (globalThis as any).Bun?.env?.BITCOIN_NETWORK ?? (globalThis as any).process?.env?.BITCOIN_NETWORK
+  const env = String(envRaw || '').toLowerCase();
   if (env === 'mainnet' || env === 'testnet' || env === 'signet' || env === 'regtest') {
     return env as BitcoinNetwork;
   }
@@ -78,6 +80,7 @@ export interface MempoolClientLike {
 }
 
 const bip32 = BIP32Factory(tinySecp256k1 as any)
+initEccLib(tinySecp256k1 as any)
 
 function nowSec(): number {
   return Math.floor(Date.now() / 1000)
@@ -120,7 +123,7 @@ export class SecureDutchyDatabase {
         decrement_interval INTEGER NOT NULL,
         start_time INTEGER NOT NULL,
         end_time INTEGER NOT NULL,
-        status TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('active','sold','expired')),
         auction_address TEXT NOT NULL,
         encrypted_private_key TEXT,
         buyer_address TEXT,
@@ -134,7 +137,7 @@ export class SecureDutchyDatabase {
         inscription_ids TEXT NOT NULL,
         quantity INTEGER NOT NULL,
         items_remaining INTEGER NOT NULL,
-        status TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('active','sold','expired')),
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
       );
@@ -144,6 +147,9 @@ export class SecureDutchyDatabase {
         details TEXT,
         created_at INTEGER NOT NULL
       );
+      CREATE INDEX IF NOT EXISTS idx_single_auctions_status_end ON single_auctions(status, end_time);
+      CREATE INDEX IF NOT EXISTS idx_single_auctions_insc ON single_auctions(inscription_id);
+      CREATE INDEX IF NOT EXISTS idx_clearing_status ON clearing_auctions(status);
     `)
   }
 
@@ -151,8 +157,8 @@ export class SecureDutchyDatabase {
   private getBitcoinJsNetwork(): bitcoin.Network {
     const n = getBitcoinNetwork()
     if (n === 'mainnet') return bitcoin.networks.bitcoin
-    if (n === 'testnet') return bitcoin.networks.testnet
-    // bitcoinjs-lib doesn't have signet/regtest separately typed here; testnet params are acceptable for our usage
+    if (n === 'regtest') return (bitcoin.networks as any).regtest || bitcoin.networks.testnet
+    // bitcoinjs-lib does not include signet; fall back to testnet params
     return bitcoin.networks.testnet
   }
 
@@ -552,9 +558,11 @@ export class SecureDutchyDatabase {
     return h1 % 0x7fffffff
   }
 
-  reset(): void {
-    this.singleAuctions.clear();
-    this.clearingAuctions.clear();
+  // --- Lifecycle ---
+  close(): void {
+    try {
+      this.db.close()
+    } catch {}
   }
 }
 
