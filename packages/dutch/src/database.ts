@@ -331,6 +331,49 @@ export class SecureDutchyDatabase {
     }
   }
 
+  listAuctions(options?: {
+    status?: SingleAuction['status'] | ClearingAuction['status'];
+    type?: 'single' | 'clearing';
+  }): Array<(SingleAuction & { auction_type: 'single' }) | (ClearingAuction & { auction_type: 'clearing' })> {
+    const results: Array<any> = [];
+    if (!options?.type || options.type === 'single') {
+      for (const a of this.singleAuctions.values()) {
+        if (!options?.status || a.status === options.status) {
+          results.push({ ...a, auction_type: 'single' as const });
+        }
+      }
+    }
+    if (!options?.type || options.type === 'clearing') {
+      for (const a of this.clearingAuctions.values()) {
+        if (!options?.status || a.status === options.status) {
+          results.push({ ...a, auction_type: 'clearing' as const });
+        }
+      }
+    }
+    return results;
+  }
+
+  updateAuctionStatus(auctionId: string, status: 'active' | 'sold' | 'expired'):
+    | { success: true; auctionType: 'single' | 'clearing' }
+    | { success: false; error: string } {
+    const now = Math.floor(Date.now() / 1000);
+    const single = this.singleAuctions.get(auctionId);
+    if (single) {
+      single.status = status;
+      single.updated_at = now;
+      this.singleAuctions.set(auctionId, single);
+      return { success: true, auctionType: 'single' };
+    }
+    const clearing = this.clearingAuctions.get(auctionId);
+    if (clearing) {
+      clearing.status = status;
+      clearing.updated_at = now;
+      this.clearingAuctions.set(auctionId, clearing);
+      return { success: true, auctionType: 'clearing' };
+    }
+    return { success: false, error: 'Auction not found' };
+  }
+
   executeBuyNow(auctionId: string, buyerAddress: string): { success: boolean; auctionType: 'single'; transactionId: string } {
     const a = this.getAuction(auctionId)
     if (!a) throw new Error('Auction not found')
@@ -507,6 +550,11 @@ export class SecureDutchyDatabase {
     }
     // avoid hardened index overflow; cap within non-hardened child range
     return h1 % 0x7fffffff
+  }
+
+  reset(): void {
+    this.singleAuctions.clear();
+    this.clearingAuctions.clear();
   }
 }
 
