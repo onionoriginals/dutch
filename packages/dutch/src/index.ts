@@ -14,3 +14,6 @@ export function getDb(dbPath: string = ':memory:') {
 }
 
 export const db = getDb()
+
+// Re-exports for API consumers
+export { SecureDutchyDatabase, getBitcoinNetwork } from './database'
