@@ -10,9 +10,9 @@ describe('Buy-now flow (single auction)', () => {
     db = new SecureDutchyDatabase(':memory:');
   });
 
-  it('executes buy-now and marks auction sold', () => {
+  it('executes buy-now and marks auction sold', async () => {
     // Create a minimal single auction directly using storeAuction
-    const { keyPair, address } = db.generateAuctionKeyPair('s1');
+    const { keyPair, address } = await db.generateAuctionKeyPair('s1');
     db.storeAuction({
       id: 's1',
       inscription_id: 'insc-s1-0',
@@ -27,7 +27,7 @@ describe('Buy-now flow (single auction)', () => {
       auction_address: address,
       created_at: nowSec,
       updated_at: nowSec,
-    } as any, keyPair.privateKey!);
+    } as any, keyPair.privateKeyHex!);
 
     // Use a syntactically valid testnet Bech32 address (regex-only validation in code)
     const buyer = 'tb1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq';

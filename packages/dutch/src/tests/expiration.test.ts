@@ -10,8 +10,8 @@ describe('Automatic expiration handling', () => {
     db = new SecureDutchyDatabase(':memory:');
   });
 
-  it('marks auctions expired when end_time passed', () => {
-    const { keyPair, address } = db.generateAuctionKeyPair('exp1');
+  it('marks auctions expired when end_time passed', async () => {
+    const { keyPair, address } = await db.generateAuctionKeyPair('exp1');
     db.storeAuction({
       id: 'exp1',
       inscription_id: 'insc-exp',
@@ -26,7 +26,7 @@ describe('Automatic expiration handling', () => {
       auction_address: address,
       created_at: nowSec - 10,
       updated_at: nowSec - 10,
-    } as any, keyPair.privateKey!);
+    } as any, keyPair.privateKeyHex!);
 
     const res = db.checkAndUpdateExpiredAuctions();
     expect(res.updatedCount).toBeGreaterThanOrEqual(1);
