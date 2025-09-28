@@ -1,8 +1,28 @@
 import { Elysia, t } from 'elysia'
 import { swagger } from '@elysiajs/swagger'
 import { cors } from '@elysiajs/cors'
-import { db, getBitcoinNetwork, version, helloDutch, SecureDutchyDatabase } from '@originals/dutch'
+import { helloDutch } from '@originals/dutch'
+import { db as packageDb, getBitcoinNetwork, version, SecureDutchyDatabase } from '@originals/dutch'
+import { db as svcDb } from './services/db'
 
+// Utility for reading JSON bodies (for endpoints using Request)
+async function readJson(request: Request) {
+  try {
+    const contentType = request.headers.get('content-type') || ''
+    if (contentType.includes('application/json')) return await request.json()
+    const text = await request.text()
+    if (!text) return {}
+    try {
+      return JSON.parse(text)
+    } catch {
+      return {}
+    }
+  } catch {
+    return {}
+  }
+}
+
+// Utility for network override (from the "HEAD" branch)
 function withNetworkOverride<T>(networkParam: string | undefined, handler: () => T): T {
   const original = (globalThis as any).process?.env?.BITCOIN_NETWORK
   if (networkParam) (globalThis as any).process.env.BITCOIN_NETWORK = String(networkParam)
@@ -13,8 +33,9 @@ function withNetworkOverride<T>(networkParam: string | undefined, handler: () =>
   }
 }
 
+// Compose the app, combining both sets of endpoints
 export function createApp(dbInstance?: SecureDutchyDatabase) {
-  const database = dbInstance ?? new SecureDutchyDatabase(':memory:')
+  const database = dbInstance ?? packageDb
   const app = new Elysia()
     .use(cors())
     .use(swagger())
@@ -22,7 +43,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
     .get('/', ({ query }) =>
       withNetworkOverride(query?.network as any, () => ({
         ok: true,
-        network: getBitcoinNetwork?.(),
+        network: getBitcoinNetwork(),
         version,
       })),
       {
@@ -32,7 +53,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
     .get('/hello', () => ({ message: helloDutch('World') }))
     .get('/health', ({ query }) =>
       withNetworkOverride(query?.network as any, () => {
-        const auctions = db.listAuctions()
+        const auctions = database.listAuctions()
         const active = auctions.filter((a: any) => a.status === 'active').length
         const sold = auctions.filter((a: any) => a.status === 'sold').length
         const expired = auctions.filter((a: any) => a.status === 'expired').length
@@ -53,14 +74,14 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
       ({ query }) =>
         withNetworkOverride(query?.network as any, () => {
           const now = Math.floor(Date.now() / 1000)
-          const list = db.listAuctions({
+          const list = database.listAuctions({
             status: (query.status as any) || undefined,
             type: (query.type as any) || undefined,
           })
           const enriched = list.map((a: any) => {
             if (a.auction_type === 'single') {
-              const linear = db.calculateCurrentPrice(a, now)
-              const stepped = db.calculatePriceWithIntervals(a, now)
+              const linear = database.calculateCurrentPrice(a, now)
+              const stepped = database.calculatePriceWithIntervals(a, now)
               return {
                 ...a,
                 pricing: {
@@ -86,14 +107,14 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
     .get('/auction/:auctionId', ({ params, query }) =>
       withNetworkOverride(query?.network as any, () => {
         const now = Math.floor(Date.now() / 1000)
-        const a = db.getAuction(params.auctionId)
+        const a = database.getAuction(params.auctionId)
         if (a) {
           if (a.status === 'active' && a.end_time <= now) {
-            db.updateAuctionStatus(a.id, 'expired')
+            database.updateAuctionStatus(a.id, 'expired')
             a.status = 'expired'
           }
-          const linear = db.calculateCurrentPrice(a, now)
-          const stepped = db.calculatePriceWithIntervals(a, now)
+          const linear = database.calculateCurrentPrice(a, now)
+          const stepped = database.calculatePriceWithIntervals(a, now)
           return {
             ok: true,
             network: getBitcoinNetwork(),
@@ -103,7 +124,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         }
         // Try clearing auction status
         try {
-          const s = (db as any).getClearingAuctionStatus(params.auctionId)
+          const s = database.getClearingAuctionStatus(params.auctionId)
           return { ok: true, network: getBitcoinNetwork(), auction: { ...s.auction, auction_type: 'clearing' as const }, pricing: null }
         } catch {
           return { ok: false, error: 'Auction not found' }
@@ -118,13 +139,13 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
     .get('/price/:auctionId', ({ params, query }) =>
       withNetworkOverride(query?.network as any, () => {
         const now = Math.floor(Date.now() / 1000)
-        const a = db.getAuction(params.auctionId)
+        const a = database.getAuction(params.auctionId)
         if (!a) return { ok: false, error: 'Auction not found' }
         if (a.status === 'active' && a.end_time <= now) {
-          db.updateAuctionStatus(a.id, 'expired')
+          database.updateAuctionStatus(a.id, 'expired')
           a.status = 'expired'
         }
-        const linear = db.calculateCurrentPrice(a, now)
+        const linear = database.calculateCurrentPrice(a, now)
         return { ok: true, network: getBitcoinNetwork(), auctionId: a.id, price: linear.currentPrice, status: linear.auctionStatus, at: now }
       }),
       { params: t.Object({ auctionId: t.String() }), query: t.Object({ network: t.Optional(t.String()) }) },
@@ -132,13 +153,13 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
     .get('/price/:auctionId/stepped', ({ params, query }) =>
       withNetworkOverride(query?.network as any, () => {
         const now = Math.floor(Date.now() / 1000)
-        const a = db.getAuction(params.auctionId)
+        const a = database.getAuction(params.auctionId)
         if (!a) return { ok: false, error: 'Auction not found' }
         if (a.status === 'active' && a.end_time <= now) {
-          db.updateAuctionStatus(a.id, 'expired')
+          database.updateAuctionStatus(a.id, 'expired')
           a.status = 'expired'
         }
-        const stepped = db.calculatePriceWithIntervals(a, now)
+        const stepped = database.calculatePriceWithIntervals(a, now)
         return { ok: true, network: getBitcoinNetwork(), auctionId: a.id, price: stepped.currentPrice, status: a.status, at: now }
       }),
       { params: t.Object({ auctionId: t.String() }), query: t.Object({ network: t.Optional(t.String()) }) },
@@ -146,7 +167,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
     // Admin endpoints
     .post('/admin/check-expired', ({ query }) =>
       withNetworkOverride(query?.network as any, () => {
-        const result = db.checkAndUpdateExpiredAuctions()
+        const result = database.checkAndUpdateExpiredAuctions()
         return { ok: true, ...result, network: getBitcoinNetwork() }
       }),
       { query: t.Object({ network: t.Optional(t.String()) }) },
@@ -157,7 +178,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         if (!allowed.includes((body as any).status)) {
           return { ok: false, error: 'Invalid status' }
         }
-        const res = db.updateAuctionStatus(params.auctionId, (body as any).status)
+        const res = database.updateAuctionStatus(params.auctionId, (body as any).status)
         if (!('success' in res) || !res.success) return { ok: false, error: 'Auction not found' }
         return { ok: true, auctionId: params.auctionId, newStatus: (body as any).status }
       }),
@@ -326,6 +347,83 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
       })
     })
 
+    // Recovery endpoints (proxy to in-process service db)
+    .get('/recovery/auction/:auctionId', ({ params }) => svcDb.recoverAuctionFromSeed(params.auctionId))
+    .get('/recovery/all', () => svcDb.recoverAllAuctionsFromSeed())
+    .get('/recovery/verify/:auctionId', ({ params }) => svcDb.verifyAuctionRecovery(params.auctionId))
+    .post('/api/recovery/simulate-disaster', () => svcDb.simulateDisasterRecovery())
+    .get('/api/recovery/status', () => svcDb.getRecoveryStatus())
+    .get('/api/recovery/documentation', () => ({
+      title: 'Disaster Recovery Procedures',
+      version: 1,
+      procedures: [
+        { step: 1, action: 'Verify master seed presence', endpoint: '/seed/status' },
+        { step: 2, action: 'Recover specific auction from seed', endpoint: '/recovery/auction/:auctionId' },
+        { step: 3, action: 'Recover all auctions from seed', endpoint: '/recovery/all' },
+        { step: 4, action: 'Verify recovery integrity for auction', endpoint: '/recovery/verify/:auctionId' },
+        { step: 5, action: 'Monitor transactions and reconcile', endpoint: '/admin/update-all-from-blockchain' }
+      ]
+    }))
+    // Seed endpoints
+    .post('/seed/validate', async ({ request }) => {
+      const body = await readJson(request)
+      return svcDb.validateSeedPhrase((body as any)?.seed)
+    })
+    .post('/seed/import', async ({ request }) => {
+      const body = await readJson(request)
+      return svcDb.importMasterSeed((body as any)?.seed)
+    })
+    .post('/seed/rotate', async ({ request }) => {
+      const body = await readJson(request)
+      return svcDb.rotateMasterSeed((body as any)?.newSeed)
+    })
+    .get('/seed/backup-with-warnings', () => svcDb.getMasterSeedWithWarnings())
+    .get('/seed/status', () => svcDb.getSeedManagementStatus())
+    // Security minimal (not used by tests but harmless)
+    .get('/security/audit-logs', ({ query }) => svcDb.getAuditLogs(query?.limit ? Number(query.limit) : undefined, query?.operation as string | undefined))
+    .post('/security/test-encryption', async ({ request }) => {
+      const body = await readJson(request)
+      return svcDb.testEncryptionRoundTrip((body as any)?.plaintext)
+    })
+    // Fee endpoints
+    .get('/fees/rates', ({ query }) => svcDb.getFeeRates((query?.network as string) || undefined, query?.refresh === 'true'))
+    .post('/fees/calculate', async ({ request }) => {
+      const body = await readJson(request)
+      return svcDb.calculateTransactionFee(body as any)
+    })
+    .get('/fees/estimation/:transactionType', ({ params, query }) => svcDb.getFeeEstimationDisplay(params.transactionType, (query?.network as string) || undefined))
+    .post('/fees/escalate', async ({ request }) => {
+      const body = await readJson(request)
+      return svcDb.escalateTransactionFee(body as any)
+    })
+    .post('/fees/test-calculations', () => svcDb.testFeeCalculations())
+    .get('/auction/:auctionId/fee-info', ({ params, query }) => svcDb.getAuctionFeeInfo(params.auctionId, (query?.network as string) || undefined))
+    // Monitoring endpoints
+    .get('/transaction/:transactionId/status', ({ params, query }) => svcDb.monitorTransaction(params.transactionId, (query?.auctionId as string) || undefined))
+    .get('/transaction/:transactionId/monitor', ({ params, query }) => svcDb.monitorTransactionReal(params.transactionId, (query?.auctionId as string) || undefined, (query?.network as string) || undefined))
+    .post('/auction/:auctionId/update-from-blockchain', ({ params }) => svcDb.updateAuctionFromBlockchain(params.auctionId))
+    .post('/admin/update-all-from-blockchain', () => svcDb.updateAllAuctionsFromBlockchain())
+    .get('/admin/detect-failed-transactions', () => svcDb.detectFailedTransactions())
+    .get('/auction/:auctionId/transaction-history', ({ params }) => svcDb.getTransactionHistory(params.auctionId))
+    .post('/transaction/handle-failure', async ({ request }) => {
+      const body = await readJson(request)
+      return svcDb.handleTransactionFailure((body as any)?.transactionId, (body as any)?.reason)
+    })
+    // Error handler
+    .onError(({ error, set }) => {
+      const message = (error as Error)?.message || 'Internal Error'
+      if (/not\s*found/i.test(message)) {
+        set.status = 404
+        return { error: 'Not Found' }
+      }
+      if (/required/i.test(message)) {
+        set.status = 400
+        return { error: message }
+      }
+      set.status = 500
+      return { error: message }
+    })
+
   return app
 }
 
@@ -341,5 +439,4 @@ if (import.meta.main) {
   app.listen({ port, hostname })
   const advertisedHost = hostname === '::' ? '[::1]' : hostname
   console.log(`API listening on http://${advertisedHost}:${port}`)
-}
 }

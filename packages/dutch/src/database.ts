@@ -10,7 +10,7 @@
 
 import { Database } from 'bun:sqlite'
 import * as bip39 from 'bip39'
-import { BIP32Factory, BIP32Interface } from 'bip32'
+import { BIP32Factory, type BIP32Interface } from 'bip32'
 import * as tinySecp256k1 from 'tiny-secp256k1'
 import * as bitcoin from 'bitcoinjs-lib'
 import { initEccLib } from 'bitcoinjs-lib'
@@ -223,7 +223,7 @@ export class SecureDutchyDatabase {
   // --- Encryption helpers ---
   private encodeBase64(bytes: Uint8Array): string {
     let binary = ''
-    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]!)
     return btoa(binary)
   }
 
@@ -368,11 +368,12 @@ export class SecureDutchyDatabase {
   }): Array<(SingleAuction & { auction_type: 'single' }) | (ClearingAuction & { auction_type: 'clearing' })> {
     const results: Array<any> = []
     if (!options?.type || options.type === 'single') {
-      const rows = this.db.query(
-        options?.status
-          ? `SELECT * FROM single_auctions WHERE status = ?`
-          : `SELECT * FROM single_auctions`
-      ).all(options?.status ? [options.status] : []) as any[]
+      let rows: any[]
+      if (options?.status) {
+        rows = this.db.query(`SELECT * FROM single_auctions WHERE status = ?`).all(options.status as any) as any[]
+      } else {
+        rows = this.db.query(`SELECT * FROM single_auctions`).all() as any[]
+      }
       for (const row of rows) {
         const a: SingleAuction = {
           id: row.id,
@@ -630,7 +631,7 @@ export class SecureDutchyDatabase {
       if (!bid) continue;
       for (let i = 0; i < alloc.quantity && inscriptionIdx < auction.inscription_ids.length; i++) {
         const inscriptionId = auction.inscription_ids[inscriptionIdx++];
-        artifacts.push({ bidId: bid.id, inscriptionId, toAddress: bid.bidderAddress });
+        artifacts.push({ bidId: bid.id, inscriptionId: inscriptionId!, toAddress: bid.bidderAddress });
       }
       bid.status = 'settled';
       bid.updated_at = Math.floor(Date.now() / 1000);
@@ -656,8 +657,9 @@ export class SecureDutchyDatabase {
 
   // Fee utilities (stubbed with positive values for tests)
   async getFeeRates(network: BitcoinNetwork | string): Promise<{ fast: number; normal: number; slow: number }> {
+    if (this.mempoolClient) return this.mempoolClient.getFeeRates(network)
     // Return non-zero mock values
-    return { fast: 25, normal: 15, slow: 5 };
+    return { fast: 25, normal: 15, slow: 5 }
   }
 
   async calculateTransactionFee(
