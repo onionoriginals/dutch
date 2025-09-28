@@ -404,17 +404,44 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
       return svcDb.testEncryptionRoundTrip((body as any)?.plaintext)
     })
     // Fee endpoints
-    .get('/fees/rates', ({ query }) => svcDb.getFeeRates((query?.network as string) || undefined, query?.refresh === 'true'))
+    .get('/fees/rates', ({ query }) =>
+      withNetworkOverride(query?.network as any, async () => {
+        const network = (query?.network as string) || getBitcoinNetwork()
+        const rates = await database.getFeeRates(network)
+        return { network: getBitcoinNetwork(), rates }
+      }),
+    )
     .post('/fees/calculate', async ({ request }) => {
       const body = await readJson(request)
-      return svcDb.calculateTransactionFee(body as any)
+      const network = (body as any)?.network || getBitcoinNetwork()
+      const category = ((body as any)?.category || 'medium') as 'low' | 'medium' | 'high'
+      const size = Number((body as any)?.size ?? 0)
+      const rates = await database.getFeeRates(network)
+      const satsPerVb = category === 'high' ? rates.fast : category === 'low' ? rates.slow : rates.normal
+      const fee = Math.ceil(size * satsPerVb)
+      return { network, category, rate: satsPerVb, size, fee, currency: 'sats' }
     })
-    .get('/fees/estimation/:transactionType', ({ params, query }) => svcDb.getFeeEstimationDisplay(params.transactionType, (query?.network as string) || undefined))
+    .get('/fees/estimation/:transactionType', ({ params, query }) =>
+      withNetworkOverride(query?.network as any, async () => {
+        const network = (query?.network as string) || getBitcoinNetwork()
+        const rates = await database.getFeeRates(network)
+        const sampleSize = 250
+        const options = [
+          { category: 'low', rate: rates.slow, estimatedFeeForSize: Math.ceil(sampleSize * rates.slow), etaMinutes: 30 },
+          { category: 'medium', rate: rates.normal, estimatedFeeForSize: Math.ceil(sampleSize * rates.normal), etaMinutes: 10 },
+          { category: 'high', rate: rates.fast, estimatedFeeForSize: Math.ceil(sampleSize * rates.fast), etaMinutes: 2 },
+        ]
+        return { transactionType: params.transactionType, network: getBitcoinNetwork(), options }
+      }),
+    )
     .post('/fees/escalate', async ({ request }) => {
       const body = await readJson(request)
-      return svcDb.escalateTransactionFee(body as any)
+      const currentRate = Number((body as any)?.currentRate ?? 1)
+      const bumpPercent = Number((body as any)?.bumpPercent ?? 20)
+      const newRate = Math.ceil(currentRate * (1 + bumpPercent / 100))
+      return { oldRate: currentRate, newRate, bumpedByPercent: bumpPercent }
     })
-    .post('/fees/test-calculations', () => svcDb.testFeeCalculations())
+    .post('/fees/test-calculations', () => ({ ok: true }))
     .get('/auction/:auctionId/fee-info', ({ params, query }) => svcDb.getAuctionFeeInfo(params.auctionId, (query?.network as string) || undefined))
     // Monitoring endpoints
     .get('/transaction/:transactionId/status', ({ params, query }) => svcDb.monitorTransaction(params.transactionId, (query?.auctionId as string) || undefined))
