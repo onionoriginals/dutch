@@ -241,6 +241,18 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         set.status = 500
         return { error: err?.message || 'internal_error' }
       }
+    },
+    {
+      body: t.Object({
+        auctionId: t.Optional(t.String()),
+        inscriptionIds: t.Array(t.String()),
+        quantity: t.Number(),
+        startPrice: t.Number(),
+        minPrice: t.Number(),
+        duration: t.Number(),
+        decrementInterval: t.Optional(t.Number()),
+        sellerAddress: t.String(),
+      })
     })
     .post('/clearing/place-bid', async ({ body, set }) => {
       try {
@@ -255,6 +267,13 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         set.status = 500
         return { error: err?.message || 'internal_error' }
       }
+    },
+    {
+      body: t.Object({
+        auctionId: t.String(),
+        bidderAddress: t.String(),
+        quantity: t.Optional(t.Number()),
+      })
     })
     .get('/clearing/status/:auctionId', ({ params, set }) => {
       try {
@@ -292,6 +311,12 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         set.status = 500
         return { error: err?.message || 'internal_error' }
       }
+    },
+    {
+      body: t.Object({
+        auctionId: t.String(),
+        bidIds: t.Array(t.String()),
+      })
     })
     .post('/clearing/create-bid-payment', ({ body, set }) => {
       try {
@@ -305,6 +330,14 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         set.status = 500
         return { error: err?.message || 'internal_error' }
       }
+    },
+    {
+      body: t.Object({
+        auctionId: t.String(),
+        bidderAddress: t.String(),
+        bidAmount: t.Number(),
+        quantity: t.Optional(t.Number()),
+      })
     })
     .post('/clearing/confirm-bid-payment', ({ body, set }) => {
       try {
@@ -318,6 +351,12 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         set.status = 500
         return { error: err?.message || 'internal_error' }
       }
+    },
+    {
+      body: t.Object({
+        bidId: t.String(),
+        transactionId: t.String(),
+      })
     })
     .post('/clearing/process-settlement', ({ body, set }) => {
       try {
@@ -331,6 +370,11 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         set.status = 500
         return { error: err?.message || 'internal_error' }
       }
+    },
+    {
+      body: t.Object({
+        auctionId: t.String(),
+      })
     })
     .get('/clearing/bid-payment-status/:bidId', ({ params, set }) => {
       try {
@@ -362,6 +406,18 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         duration: Number((body as any)?.duration ?? 3600),
         decrement_interval: Number((body as any)?.decrementInterval ?? 600),
         seller_address: String((body as any)?.sellerAddress ?? 'tb1p_seller'),
+      })
+    },
+    {
+      body: t.Object({
+        auctionId: t.Optional(t.String()),
+        inscriptionIds: t.Optional(t.Array(t.String())),
+        quantity: t.Optional(t.Number()),
+        startPrice: t.Optional(t.Number()),
+        minPrice: t.Optional(t.Number()),
+        duration: t.Optional(t.Number()),
+        decrementInterval: t.Optional(t.Number()),
+        sellerAddress: t.Optional(t.String()),
       })
     })
 
@@ -419,7 +475,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
     // Monitoring endpoints
     .get('/transaction/:transactionId/status', ({ params, query }) => svcDb.monitorTransaction(params.transactionId, (query?.auctionId as string) || undefined))
     .get('/transaction/:transactionId/monitor', ({ params, query }) => svcDb.monitorTransactionReal(params.transactionId, (query?.auctionId as string) || undefined, (query?.network as string) || undefined))
-    .post('/auction/:auctionId/update-from-blockchain', ({ params }) => svcDb.updateAuctionFromBlockchain(params.auctionId))
+    .post('/auction/:auctionId/update-from-blockchain', ({ params }) => svcDb.updateAuctionFromBlockchain(params.auctionId), { params: t.Object({ auctionId: t.String() }) })
     .post('/admin/update-all-from-blockchain', () => svcDb.updateAllAuctionsFromBlockchain())
     .get('/admin/detect-failed-transactions', () => svcDb.detectFailedTransactions())
     .get('/auction/:auctionId/transaction-history', ({ params }) => svcDb.getTransactionHistory(params.auctionId))
@@ -428,13 +484,17 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
       return svcDb.handleTransactionFailure((body as any)?.transactionId, (body as any)?.reason)
     })
     // Error handler
-    .onError(({ error, set }) => {
+    .onError(({ code, error, set }) => {
       const message = (error as Error)?.message || 'Internal Error'
+      if (code === 'VALIDATION') {
+        set.status = 400
+        return { error: message }
+      }
       if (/not\s*found/i.test(message)) {
         set.status = 404
         return { error: 'Not Found' }
       }
-      if (/required/i.test(message)) {
+      if ((error as any)?.name === 'ValidationError' || (error as any)?.type === 'validation' || (error as any)?.status === 400 || /required|expected|invalid|must/i.test(message)) {
         set.status = 400
         return { error: message }
       }
@@ -584,35 +644,32 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
           headers: { 'content-type': 'application/json' },
         })
       }
+    }, {
+      body: t.Object({
+        asset: t.String(),
+        startPrice: t.Number(),
+        minPrice: t.Number(),
+        duration: t.Number(),
+        decrementInterval: t.Number(),
+        sellerAddress: t.String(),
+      })
     })
     .post('/escrow/verify-ownership', ({ body, set }) => {
       const { inscriptionId, ownerAddress } = body as any
-      if (!inscriptionId || !ownerAddress) {
-        set.status = 400
-        return { error: 'Missing fields: inscriptionId, ownerAddress' }
-      }
       return database.verifyInscriptionOwnership({ inscriptionId, ownerAddress })
-    })
+    }, { body: t.Object({ inscriptionId: t.String(), ownerAddress: t.String() }) })
     .post('/escrow/create-psbt', ({ body, set }) => {
       const { auctionId, inscriptionId, ownerAddress } = body as any
-      if (!auctionId || !inscriptionId || !ownerAddress) {
-        set.status = 400
-        return { error: 'Missing fields: auctionId, inscriptionId, ownerAddress' }
-      }
       return database.createInscriptionEscrowPSBT({ auctionId, inscriptionId, ownerAddress })
-    })
+    }, { body: t.Object({ auctionId: t.String(), inscriptionId: t.String(), ownerAddress: t.String() }) })
     .get('/escrow/monitor/:auctionId/:inscriptionId', ({ params }) => {
       const { auctionId, inscriptionId } = params as any
       return database.monitorInscriptionEscrow(String(auctionId), String(inscriptionId))
     })
     .post('/escrow/update-status', ({ body, set }) => {
       const { auctionId, status, details } = body as any
-      if (!auctionId || !status) {
-        set.status = 400
-        return { error: 'Missing fields: auctionId, status' }
-      }
       return database.updateInscriptionStatus({ auctionId, status, details })
-    })
+    }, { body: t.Object({ auctionId: t.String(), status: t.String(), details: t.Optional(t.Any()) }) })
     .get('/escrow/status/:auctionId', ({ params }) => {
       const { auctionId } = params as any
       return database.getInscriptionEscrowStatus(String(auctionId))
