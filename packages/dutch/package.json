@@ -12,10 +12,14 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs",
       "default": "./dist/index.js"
+    },
+    "./browser": {
+      "import": "./dist/browser.js",
+      "default": "./dist/browser.js"
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && esbuild src/index.ts --bundle --format=cjs --platform=node --outfile=dist/index.cjs",
+    "build": "tsc -p tsconfig.json && esbuild src/index.ts --bundle --format=cjs --platform=node --external:bun:sqlite --outfile=dist/index.cjs && esbuild src/browser.ts --bundle --format=esm --platform=browser --outfile=dist/browser.js",
     "dev": "tsc -p tsconfig.json --watch",
     "test": "bun test"
   },
