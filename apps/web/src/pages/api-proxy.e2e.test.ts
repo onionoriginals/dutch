@@ -1,6 +1,7 @@
 import { beforeAll, afterAll, describe, test, expect } from 'bun:test'
 
 let apiStop: (() => void) | undefined
+let webStop: (() => void) | undefined
 let webOrigin = ''
 
 async function startApi(): Promise<string> {
@@ -19,7 +20,9 @@ async function startWeb(apiOrigin: string): Promise<string> {
   ;(globalThis as any).process.env.HOST = '127.0.0.1'
   ;(globalThis as any).process.env.PORT = String(PORT)
   ;(globalThis as any).process.env.API_INTERNAL_ORIGIN = apiOrigin
-  await import('../../server.ts')
+  const mod: any = await import('../../server.ts')
+  const srv = mod.server
+  webStop = () => srv?.stop?.()
 
   const startedAt = Date.now()
   let lastErr: any
@@ -41,6 +44,7 @@ beforeAll(async () => {
 })
 
 afterAll(() => {
+  if (webStop) webStop()
   if (apiStop) apiStop()
 })
 
