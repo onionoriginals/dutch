@@ -45,7 +45,7 @@ async function getFileResponse(pathname: string): Promise<Response | null> {
   return null;
 }
 
-Bun.serve({
+export const server = Bun.serve({
   hostname: HOSTNAME,
   port: PORT,
   async fetch(req) {

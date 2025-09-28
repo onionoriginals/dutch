@@ -79,7 +79,9 @@ describe('auction creation and inscription escrow endpoints', () => {
     expect(res.status).toBe(200)
     const json = await res.json() as any
     expect(json.id).toBeTruthy()
-    expect(json.address).toMatch(/^tb1q/)
+    // Address prefix depends on network (regtest: bcrt1, testnet/signet: tb1, mainnet: bc1)
+    expect(typeof json.address).toBe('string')
+    expect(json.address.startsWith('bcrt1') || json.address.startsWith('tb1') || json.address.startsWith('bc1')).toBeTrue()
     expect(json.psbt).toMatch(/^cHNidP/)
     expect(json.inscriptionInfo.vout).toBe(vout)
 
