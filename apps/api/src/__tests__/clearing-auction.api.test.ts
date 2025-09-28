@@ -1,0 +1,172 @@
+import { describe, it, expect, beforeAll } from 'bun:test'
+import { createApp } from '../index'
+import { SecureDutchyDatabase } from '@originals/dutch'
+
+function jsonRequest(url: string, method: string, body?: unknown): Request {
+	return new Request(url, {
+		method,
+		headers: { 'content-type': 'application/json' },
+		body: body ? JSON.stringify(body) : undefined,
+	})
+}
+
+describe('Clearing price auction API', () => {
+	let app: ReturnType<typeof createApp>
+	let db: SecureDutchyDatabase
+
+	beforeAll(() => {
+		db = new SecureDutchyDatabase(':memory:')
+		app = createApp(db)
+	})
+
+	it('end-to-end: create auction -> place bids -> settlement calc -> mark settled', async () => {
+		const auctionId = 'auc-e2e-1'
+		// Create auction
+		let res = await app.handle(
+			jsonRequest('http://localhost/clearing/create-auction', 'POST', {
+				auctionId,
+				inscriptionIds: ['insc-a0', 'insc-a1', 'insc-a2'],
+				quantity: 3,
+				startPrice: 30000,
+				minPrice: 10000,
+				duration: 3600,
+				decrementInterval: 600,
+				sellerAddress: 'tb1p_seller',
+			}),
+		)
+		let json: any = await res.json()
+		expect(json.success).toBe(true)
+		expect(json.auctionDetails?.id).toBe(auctionId)
+
+		// Place bids until sold
+		res = await app.handle(
+			jsonRequest('http://localhost/clearing/place-bid', 'POST', {
+				auctionId,
+				bidderAddress: 'tb1p_bidder_1',
+				quantity: 1,
+			}),
+		)
+		json = await res.json()
+		expect(json.success).toBe(true)
+		expect(json.itemsRemaining).toBe(2)
+
+		res = await app.handle(
+			jsonRequest('http://localhost/clearing/place-bid', 'POST', {
+				auctionId,
+				bidderAddress: 'tb1p_bidder_2',
+				quantity: 1,
+			}),
+		)
+		json = await res.json()
+		expect(json.success).toBe(true)
+		expect(json.itemsRemaining).toBe(1)
+
+		res = await app.handle(
+			jsonRequest('http://localhost/clearing/place-bid', 'POST', {
+				auctionId,
+				bidderAddress: 'tb1p_bidder_3',
+				quantity: 1,
+			}),
+		)
+		json = await res.json()
+		expect(json.success).toBe(true)
+		expect(json.auctionStatus).toBe('sold')
+
+		// Status
+		res = await app.handle(new Request(`http://localhost/clearing/status/${auctionId}`))
+		json = await res.json()
+		expect(json.auction.status).toBe('sold')
+		expect(json.progress.itemsRemaining).toBe(0)
+
+		// Settlement calc (no confirmed payments yet -> allocations empty, but clearingPrice computed)
+		res = await app.handle(new Request(`http://localhost/clearing/settlement/${auctionId}`))
+		json = await res.json()
+		expect(typeof json.clearingPrice).toBe('number')
+		expect(json.clearingPrice).toBeGreaterThanOrEqual(10000)
+		expect(Array.isArray(json.allocations)).toBe(true)
+
+		// Mark bids as settled
+		res = await app.handle(new Request(`http://localhost/clearing/bids/${auctionId}`))
+		const bidsResp: any = await res.json()
+		expect(Array.isArray(bidsResp.bids)).toBe(true)
+		expect(bidsResp.bids.length).toBe(3)
+
+		res = await app.handle(
+			jsonRequest('http://localhost/clearing/mark-settled', 'POST', {
+				auctionId,
+				bidIds: bidsResp.bids.map((b: any) => b.id),
+			}),
+		)
+		json = await res.json()
+		expect(json.success).toBe(true)
+		expect(json.updated).toBe(3)
+	})
+
+	it('payment subflow: create bid payment -> confirm -> process settlement', async () => {
+		const auctionId = 'auc-pay-1'
+		// Create auction
+		let res = await app.handle(
+			jsonRequest('http://localhost/clearing/create-auction', 'POST', {
+				auctionId,
+				inscriptionIds: ['insc-p0', 'insc-p1'],
+				quantity: 2,
+				startPrice: 20000,
+				minPrice: 5000,
+				duration: 1800,
+				decrementInterval: 300,
+				sellerAddress: 'tb1p_seller_2',
+			}),
+		)
+		let json: any = await res.json()
+		expect(json.success).toBe(true)
+
+		// Create bid payment
+		res = await app.handle(
+			jsonRequest('http://localhost/clearing/create-bid-payment', 'POST', {
+				auctionId,
+				bidderAddress: 'tb1p_buyer_x',
+				bidAmount: 21000,
+				quantity: 1,
+			}),
+		)
+		json = await res.json()
+		expect(typeof json.escrowAddress).toBe('string')
+		expect(json.escrowAddress.startsWith('tb1q')).toBe(true)
+		expect(typeof json.bidId).toBe('string')
+
+		const bidId = json.bidId as string
+
+		// Confirm payment
+		res = await app.handle(
+			jsonRequest('http://localhost/clearing/confirm-bid-payment', 'POST', {
+				bidId,
+				transactionId: 'tx_mock_123',
+			}),
+		)
+		json = await res.json()
+		expect(json.success).toBe(true)
+
+		// Bid payment status
+		res = await app.handle(new Request(`http://localhost/clearing/bid-payment-status/${bidId}`))
+		json = await res.json()
+		expect(json.status).toBe('payment_confirmed')
+
+		// Process settlement -> artifacts generated
+		res = await app.handle(
+			jsonRequest('http://localhost/clearing/process-settlement', 'POST', {
+				auctionId,
+			}),
+		)
+		json = await res.json()
+		expect(json.success).toBe(true)
+		expect(Array.isArray(json.artifacts)).toBe(true)
+		expect(json.artifacts.length).toBeGreaterThanOrEqual(1)
+
+		// Auction payments listing
+		res = await app.handle(new Request(`http://localhost/clearing/auction-payments/${auctionId}`))
+		json = await res.json()
+		expect(Array.isArray(json.bids)).toBe(true)
+		expect(json.bids.find((b: any) => b.id === bidId)?.status).toBe('settled')
+	})
+})
+
