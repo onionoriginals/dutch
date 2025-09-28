@@ -8,5 +8,15 @@ export default defineConfig({
   preview: {
     host: true,
     port: 4321
+  },
+  vite: {
+    build: {
+      rollupOptions: {
+        external: ['bun:sqlite']
+      }
+    },
+    optimizeDeps: {
+      exclude: ['bun:sqlite']
+    }
   }
 })

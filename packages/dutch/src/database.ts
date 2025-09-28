@@ -9,6 +9,8 @@
 */
 
 import { Database } from 'bun:sqlite'
+import { mkdirSync, existsSync } from 'fs'
+import { dirname } from 'path'
 import * as bip39 from 'bip39'
 import { BIP32Factory, type BIP32Interface } from 'bip32'
 import * as tinySecp256k1 from 'tiny-secp256k1'
@@ -123,6 +125,15 @@ export class SecureDutchyDatabase {
     = new Map();
 
   constructor(public dbPath: string, mempoolClient?: MempoolClientLike) {
+    const isMemory = !dbPath || dbPath.startsWith(':memory:') || dbPath.startsWith('file::memory')
+    if (!isMemory) {
+      const parentDir = dirname(dbPath)
+      if (parentDir && parentDir !== '.' && !existsSync(parentDir)) {
+        try {
+          mkdirSync(parentDir, { recursive: true })
+        } catch {}
+      }
+    }
     this.db = new Database(dbPath)
     this.mempoolClient = mempoolClient
     this.initialize()
