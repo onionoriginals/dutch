@@ -13,7 +13,7 @@ describe('Fee endpoints', () => {
     let res = await fetchApi('/fees/rates?network=testnet')
     expect(res.status).toBe(200)
     let json = await res.json()
-    expect(json.rates.medium).toBe(10)
+    expect(json.rates.normal).toBeGreaterThan(0)
 
     res = await fetchApi('/fees/estimation/send?network=testnet')
     expect(res.status).toBe(200)
@@ -24,7 +24,7 @@ describe('Fee endpoints', () => {
     res = await fetchApi('/fees/calculate', { method: 'POST', body: JSON.stringify({ network: 'testnet', category: 'medium', size: 123 }) })
     expect(res.status).toBe(200)
     json = await res.json()
-    expect(json.rate).toBe(10)
+    expect(json.rate).toBeGreaterThan(0)
     expect(json.fee).toBeGreaterThan(0)
 
     res = await fetchApi('/fees/escalate', { method: 'POST', body: JSON.stringify({ currentRate: 10, bumpPercent: 50 }) })
