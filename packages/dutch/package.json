@@ -19,7 +19,7 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && esbuild src/index.ts --bundle --format=cjs --platform=node --external:bun:sqlite --outfile=dist/index.cjs && esbuild src/browser.ts --bundle --format=esm --platform=browser --outfile=dist/browser.js",
+    "build": "tsc -p tsconfig.json && bun scripts/build.ts",
     "dev": "tsc -p tsconfig.json --watch",
     "test": "bun test"
   },
