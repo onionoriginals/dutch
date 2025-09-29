@@ -8,5 +8,5 @@
     "moduleResolution": "bundler"
   },
   "include": ["src/**/*", "astro.config.mjs"],
-  "files": ["src/types/react-shim.d.ts"]
+  
 }
