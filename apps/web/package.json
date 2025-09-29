@@ -3,9 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bunx --yes astro dev --port 4321 --host",
-    "build": "bunx --yes astro build",
-    "start": "bunx --yes astro preview --host"
+    "dev": "astro dev --port 4321 --host",
+    "build": "astro build",
+    "start": "bun --port 4321 --host=0.0.0.0 dist/index.html"
   },
   "dependencies": {
     "astro": "^4.15.3",

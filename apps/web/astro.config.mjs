@@ -5,17 +5,15 @@ export default defineConfig({
   integrations: [tailwind({ applyBaseStyles: false })],
   server: {
     host: true,
-    port: 4321
+    port: 4321,
+    allowedHosts: true
   },
   preview: {
     host: true,
-    port: 4321
+    port: 4321,
+    allowedHosts: true
   },
   vite: {
-    preview: {
-      // Allow Railway preview host header
-      allowedHosts: ['dutch-production.up.railway.app']
-    },
     resolve: {
       // Prefer the "browser" export condition so @originals/dutch resolves to its browser build
       conditions: ['browser']

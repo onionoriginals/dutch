@@ -6,6 +6,38 @@ import { db as packageDb, getBitcoinNetwork, version, SecureDutchyDatabase } fro
 import { db as svcDb } from './services/db'
 import * as bitcoin from 'bitcoinjs-lib'
 
+// Configure allowed origins for CORS at the API level
+const allowedOriginsFromEnv = (Bun.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean)
+
+const defaultAllowedOrigins = [
+  'http://localhost:4321',
+  'http://127.0.0.1:4321',
+  'https://dutch-production.up.railway.app',
+]
+
+const allowedOrigins = allowedOriginsFromEnv.length
+  ? allowedOriginsFromEnv
+  : defaultAllowedOrigins
+
+function isOriginAllowed(origin: string): boolean {
+  try {
+    const originHost = new URL(`http://${origin}`).host.toLowerCase()
+    return allowedOrigins.some((allowed) => {
+      try {
+        const allowedHost = new URL(allowed).host.toLowerCase()
+        return allowedHost === originHost
+      } catch {
+        return allowed.toLowerCase() === origin.toLowerCase()
+      }
+    })
+  } catch {
+    return false
+  }
+}
+
 // Utility for reading JSON bodies (for endpoints using Request)
 async function readJson(request: Request) {
   try {
@@ -55,7 +87,14 @@ function getBitcoinJsNetwork(): bitcoin.networks.Network {
 export function createApp(dbInstance?: SecureDutchyDatabase) {
   const database = dbInstance ?? packageDb
   const app = new Elysia()
-    .use(cors())
+    .use(cors({
+      origin: (request) => {
+        const host = request.headers.get('host') || request.headers.get('Host')
+        if (!host) return true
+        return isOriginAllowed(host)
+      },
+      credentials: true,
+    }))
     .use(swagger())
     // Health and root
     .get('/', ({ query }) =>
@@ -628,7 +667,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
           ? { script: Buffer.from(scriptHex, 'hex'), value }
           : { script: bitcoin.address.toOutputScript(String(sellerAddress), network), value }
 
-        psbt.addInput({ hash: txid, index: voutIndex, witnessUtxo })
+        psbt.addInput({ hash: String(txid), index: voutIndex, witnessUtxo })
 
         const outputValue = Math.max(1, value - 500)
         let outputScript: Buffer
