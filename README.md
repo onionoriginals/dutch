@@ -22,3 +22,6 @@ Monorepo using Bun workspaces with:
 
 - Library
   - `bun --cwd packages/dutch run dev`
+
+- Testing
+  - `bun test`
