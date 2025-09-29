@@ -5,7 +5,7 @@ let webStop: (() => void) | undefined
 let webOrigin = ''
 
 async function startApi(): Promise<string> {
-  const mod = await import('../../../api/src/index.ts')
+  const mod = await import('../../api/src/index.ts')
   const app = mod.createApp()
   const server = app.listen({ hostname: '127.0.0.1', port: 0 })
   const port = (server as any)?.port ?? (server as any)?.server?.port ?? 0
@@ -20,7 +20,7 @@ async function startWeb(apiOrigin: string): Promise<string> {
   ;(globalThis as any).process.env.HOST = '127.0.0.1'
   ;(globalThis as any).process.env.PORT = String(PORT)
   ;(globalThis as any).process.env.API_INTERNAL_ORIGIN = apiOrigin
-  const mod: any = await import('../../server.ts')
+  const mod: any = await import('../src/server.ts')
   const srv = mod.server
   webStop = () => srv?.stop?.()
 
