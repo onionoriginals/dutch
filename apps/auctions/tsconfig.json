@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "baseUrl": ".",
+    "paths": {},
+    "lib": ["ESNext", "DOM"]
+  },
+  "include": [
+    "app/**/*",
+    "src/**/*",
+    "next-env.d.ts"
+  ]
+}
+
