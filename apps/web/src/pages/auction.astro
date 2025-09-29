@@ -1,18 +1,70 @@
 ---
-import AuctionForm from '../components/examples/AuctionForm'
+import React from 'react'
+import AuctionTypeSelector from '../components/auction/AuctionTypeSelector'
+import DutchPriceScheduleEditor from '../components/auction/DutchPriceScheduleEditor'
 ---
-
-<html lang="en">
+<html>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Auction Form Example</title>
+    <title>Auction Components Demo</title>
   </head>
   <body>
-    <main style="padding: 2rem; max-width: 720px; margin: 0 auto;">
-      <AuctionForm client:load />
+    <main style="padding: 24px; max-width: 920px; margin: 0 auto;">
+      <h1 style="font-size: 1.5rem; font-weight: 700;">Auction Components Demo</h1>
+
+      <section style="margin-top: 20px;">
+        <h2 style="font-size: 1.25rem; font-weight: 600;">Auction Type Selector</h2>
+        <div client:load>
+          <AuctionTypeSelectorDemo />
+        </div>
+      </section>
+
+      <section style="margin-top: 28px;">
+        <h2 style="font-size: 1.25rem; font-weight: 600;">Dutch Price Schedule Editor</h2>
+        <div client:load>
+          <DutchEditorDemo />
+        </div>
+      </section>
     </main>
   </body>
-  
 </html>
 
+{/* React islands */}
+{
+  (() => {
+    function AuctionTypeSelectorDemo() {
+      const [type, setType] = React.useState<'english' | 'dutch'>('english')
+      return (
+        <div>
+          <AuctionTypeSelector value={type} onChange={setType} docsSlot={<a href="/docs/auction-type" style="font-size:12px;text-decoration:underline;">Docs</a>} />
+          <p style="margin-top:8px;font-size:12px;color:#6b7280;">Selected: {type}</p>
+        </div>
+      )
+    }
+
+    function DutchEditorDemo() {
+      const [output, setOutput] = React.useState<any>(null)
+      return (
+        <div>
+          <DutchPriceScheduleEditor
+            startPrice={100}
+            floorPrice={10}
+            durationSeconds={120}
+            intervalSeconds={20}
+            decayType={'linear'}
+            onChange={setOutput}
+          />
+          <pre style="margin-top:8px;background:#111827;color:#e5e7eb;padding:8px;border-radius:6px;overflow:auto;max-height:160px;">
+{JSON.stringify(output?.points?.slice(0,6), null, 2)}
+          </pre>
+        </div>
+      )
+    }
+
+    return {
+      AuctionTypeSelectorDemo,
+      DutchEditorDemo,
+    }
+  })()
+}
