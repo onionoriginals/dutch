@@ -96,17 +96,20 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
       credentials: true,
     }))
     .use(swagger())
-    // Health and root
-    .get('/', ({ query }) =>
-      withNetworkOverride(query?.network as any, () => ({
-        ok: true,
-        network: getBitcoinNetwork(),
-        version,
-      })),
-      {
-        query: t.Object({ network: t.Optional(t.String()) }),
-      },
-    )
+    // Root: serve built web UI index.html
+    .get('/', async () => {
+      try {
+        const indexUrl = new URL('../../web/dist/index.html', import.meta.url)
+        const file = Bun.file(indexUrl)
+        if (!(await file.exists())) {
+          return new Response('index.html not found', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } })
+        }
+        const html = await file.text()
+        return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8' } })
+      } catch (err: any) {
+        return new Response('Failed to load index.html', { status: 500, headers: { 'content-type': 'text/plain; charset=utf-8' } })
+      }
+    })
     .get('/hello', () => ({ message: helloDutch('World') }))
     .get('/health', ({ query }) =>
       withNetworkOverride(query?.network as any, () => {

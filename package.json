@@ -11,7 +11,7 @@
   "scripts": {
     "dev": "turbo run dev --parallel",
     "build": "turbo run build",
-    "start": "turbo run start --parallel",
+    "start": "turbo run start --filter=@originals/api",
     "clean": "rimraf node_modules bun.lock && find . -name node_modules -type d -prune -exec rm -rf {} +",
     "dev:api": "bun --cwd apps/api run dev",
     "dev:web": "npm --prefix apps/web run dev",
