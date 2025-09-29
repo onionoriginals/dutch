@@ -28,8 +28,12 @@ function isOriginAllowed(origin: string): boolean {
     return allowedOrigins.some((allowed) => {
       try {
         const allowedHost = new URL(allowed).host.toLowerCase()
+        console.log('allowedHost', allowedHost)
+        console.log('originHost', originHost)
         return allowedHost === originHost
       } catch {
+        console.log('allowed', allowed)
+        console.log('origin', origin)
         return allowed.toLowerCase() === origin.toLowerCase()
       }
     })
