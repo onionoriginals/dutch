@@ -56,7 +56,16 @@ export default function Filters({ initial }: { initial?: Partial<FiltersValues> 
 
   React.useEffect(() => {
     writeToURL(values)
-    window.dispatchEvent(new CustomEvent('auctions:query', { detail: values }))
+    const detail = {
+      // map search text from `q` to `search` for the data adapter
+      search: values.q || '',
+      type: values.type,
+      status: values.status,
+      startDate: values.startDate,
+      endDate: values.endDate,
+      sort: values.sort
+    }
+    window.dispatchEvent(new CustomEvent('auctions:query', { detail }))
   }, [values])
 
   return (
