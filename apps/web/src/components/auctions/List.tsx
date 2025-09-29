@@ -102,6 +102,12 @@ export default function List({ initial, query }: ListProps) {
   const activeItems = items.filter((a) => a.status !== 'ended')
   const endedItems = items.filter((a) => a.status === 'ended')
 
+  function handleQuickAction(id: string, action: 'view' | 'edit' | 'cancel' | 'share') {
+    if (action === 'view') {
+      window.location.href = `/auctions/view?id=${encodeURIComponent(id)}`
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-end">
@@ -132,13 +138,13 @@ export default function List({ initial, query }: ListProps) {
         view === 'grid' ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {activeItems.map((a) => (
-              <AuctionCard key={a.id} {...a} />
+              <AuctionCard key={a.id} {...a} onQuickAction={handleQuickAction} />
             ))}
           </div>
         ) : (
           <div className="space-y-3">
             {activeItems.map((a) => (
-              <AuctionListItem key={a.id} {...a} />
+              <AuctionListItem key={a.id} {...a} onQuickAction={handleQuickAction} />
             ))}
           </div>
         )
@@ -151,13 +157,13 @@ export default function List({ initial, query }: ListProps) {
           {view === 'grid' ? (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {endedItems.map((a) => (
-                <AuctionCard key={a.id} {...a} />
+                <AuctionCard key={a.id} {...a} onQuickAction={handleQuickAction} />
               ))}
             </div>
           ) : (
             <div className="space-y-3">
               {endedItems.map((a) => (
-                <AuctionListItem key={a.id} {...a} />
+                <AuctionListItem key={a.id} {...a} onQuickAction={handleQuickAction} />
               ))}
             </div>
           )}

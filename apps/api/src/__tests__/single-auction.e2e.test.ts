@@ -47,7 +47,7 @@ describe('Single auction lifecycle', () => {
     ])
 
     // POST /create-auction
-    const createRes = await app.handle(new Request('http://localhost/create-auction', {
+    const createRes = await app.handle(new Request('http://localhost/api/create-auction', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -65,14 +65,14 @@ describe('Single auction lifecycle', () => {
     const auctionId = created.id as string
 
     // GET /auction/:id
-    const aRes = await app.handle(new Request(`http://localhost/auction/${encodeURIComponent(auctionId)}`))
+    const aRes = await app.handle(new Request(`http://localhost/api/auction/${encodeURIComponent(auctionId)}`))
     expect(aRes.status).toBe(200)
     const aJson = (await aRes.json()) as any
     expect(aJson.ok).toBe(true)
     expect(aJson.auction.id).toBe(auctionId)
 
     // GET /price/:id
-    const pRes = await app.handle(new Request(`http://localhost/price/${encodeURIComponent(auctionId)}`))
+    const pRes = await app.handle(new Request(`http://localhost/api/price/${encodeURIComponent(auctionId)}`))
     expect(pRes.status).toBe(200)
     const pJson = (await pRes.json()) as any
     expect(pJson.ok).toBe(true)

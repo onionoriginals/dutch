@@ -26,7 +26,7 @@ describe('auction creation and inscription escrow endpoints', () => {
   })
 
   it('returns 400 on invalid inscription format', async () => {
-    const res = await app.handle(new Request('http://localhost/create-auction', {
+    const res = await app.handle(new Request('http://localhost/api/create-auction', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -64,7 +64,7 @@ describe('auction creation and inscription escrow endpoints', () => {
     ])
 
     // Create auction
-    const res = await app.handle(new Request('http://localhost/create-auction', {
+    const res = await app.handle(new Request('http://localhost/api/create-auction', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -88,7 +88,7 @@ describe('auction creation and inscription escrow endpoints', () => {
     const auctionId = json.id
 
     // Escrow verification
-    const verifyRes = await app.handle(new Request('http://localhost/escrow/verify-ownership', {
+    const verifyRes = await app.handle(new Request('http://localhost/api/escrow/verify-ownership', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ inscriptionId: `${txid}i${vout}`, ownerAddress: sellerAddress })
@@ -98,7 +98,7 @@ describe('auction creation and inscription escrow endpoints', () => {
     expect(verify.valid).toBeTrue()
 
     // Create escrow PSBT
-    const escrowRes = await app.handle(new Request('http://localhost/escrow/create-psbt', {
+    const escrowRes = await app.handle(new Request('http://localhost/api/escrow/create-psbt', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ auctionId, inscriptionId: `${txid}i${vout}`, ownerAddress: sellerAddress })
@@ -108,13 +108,13 @@ describe('auction creation and inscription escrow endpoints', () => {
     expect(typeof escrow.psbt).toBe('string')
 
     // Monitor
-    const monitorRes = await app.handle(new Request(`http://localhost/escrow/monitor/${encodeURIComponent(auctionId)}/${txid}i${vout}`))
+    const monitorRes = await app.handle(new Request(`http://localhost/api/escrow/monitor/${encodeURIComponent(auctionId)}/${txid}i${vout}`))
     expect(monitorRes.status).toBe(200)
     const monitor = await monitorRes.json() as any
     expect(monitor.status).toBeDefined()
 
     // Update status
-    const updRes = await app.handle(new Request('http://localhost/escrow/update-status', {
+    const updRes = await app.handle(new Request('http://localhost/api/escrow/update-status', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ auctionId, status: 'confirmed', details: { txid: 'tx123' } })
@@ -124,13 +124,13 @@ describe('auction creation and inscription escrow endpoints', () => {
     expect(upd.ok).toBeTrue()
 
     // Get status
-    const statusRes = await app.handle(new Request(`http://localhost/escrow/status/${encodeURIComponent(auctionId)}`))
+    const statusRes = await app.handle(new Request(`http://localhost/api/escrow/status/${encodeURIComponent(auctionId)}`))
     expect(statusRes.status).toBe(200)
     const status = await statusRes.json() as any
     expect(status.status).toBe('confirmed')
 
     // Check timeouts (no change expected immediately)
-    const chkRes = await app.handle(new Request('http://localhost/admin/check-escrow-timeouts', { method: 'POST' }))
+    const chkRes = await app.handle(new Request('http://localhost/api/admin/check-escrow-timeouts', { method: 'POST' }))
     expect(chkRes.status).toBe(200)
     const chk = await chkRes.json() as any
     expect(typeof chk.updated).toBe('number')

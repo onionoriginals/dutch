@@ -23,7 +23,7 @@ describe('Clearing price auction API', () => {
 		const auctionId = 'auc-e2e-1'
 		// Create auction
 		let res = await app.handle(
-			jsonRequest('http://localhost/clearing/create-auction', 'POST', {
+			jsonRequest('http://localhost/api/clearing/create-auction', 'POST', {
 				auctionId,
 				inscriptionIds: ['insc-a0', 'insc-a1', 'insc-a2'],
 				quantity: 3,
@@ -40,7 +40,7 @@ describe('Clearing price auction API', () => {
 
 		// Place bids until sold
 		res = await app.handle(
-			jsonRequest('http://localhost/clearing/place-bid', 'POST', {
+			jsonRequest('http://localhost/api/clearing/place-bid', 'POST', {
 				auctionId,
 				bidderAddress: 'tb1p_bidder_1',
 				quantity: 1,
@@ -51,7 +51,7 @@ describe('Clearing price auction API', () => {
 		expect(json.itemsRemaining).toBe(2)
 
 		res = await app.handle(
-			jsonRequest('http://localhost/clearing/place-bid', 'POST', {
+			jsonRequest('http://localhost/api/clearing/place-bid', 'POST', {
 				auctionId,
 				bidderAddress: 'tb1p_bidder_2',
 				quantity: 1,
@@ -62,7 +62,7 @@ describe('Clearing price auction API', () => {
 		expect(json.itemsRemaining).toBe(1)
 
 		res = await app.handle(
-			jsonRequest('http://localhost/clearing/place-bid', 'POST', {
+			jsonRequest('http://localhost/api/clearing/place-bid', 'POST', {
 				auctionId,
 				bidderAddress: 'tb1p_bidder_3',
 				quantity: 1,
@@ -73,26 +73,26 @@ describe('Clearing price auction API', () => {
 		expect(json.auctionStatus).toBe('sold')
 
 		// Status
-		res = await app.handle(new Request(`http://localhost/clearing/status/${auctionId}`))
+		res = await app.handle(new Request(`http://localhost/api/clearing/status/${auctionId}`))
 		json = await res.json()
 		expect(json.auction.status).toBe('sold')
 		expect(json.progress.itemsRemaining).toBe(0)
 
 		// Settlement calc (no confirmed payments yet -> allocations empty, but clearingPrice computed)
-		res = await app.handle(new Request(`http://localhost/clearing/settlement/${auctionId}`))
+		res = await app.handle(new Request(`http://localhost/api/clearing/settlement/${auctionId}`))
 		json = await res.json()
 		expect(typeof json.clearingPrice).toBe('number')
 		expect(json.clearingPrice).toBeGreaterThanOrEqual(10000)
 		expect(Array.isArray(json.allocations)).toBe(true)
 
 		// Mark bids as settled
-		res = await app.handle(new Request(`http://localhost/clearing/bids/${auctionId}`))
+		res = await app.handle(new Request(`http://localhost/api/clearing/bids/${auctionId}`))
 		const bidsResp: any = await res.json()
 		expect(Array.isArray(bidsResp.bids)).toBe(true)
 		expect(bidsResp.bids.length).toBe(3)
 
 		res = await app.handle(
-			jsonRequest('http://localhost/clearing/mark-settled', 'POST', {
+			jsonRequest('http://localhost/api/clearing/mark-settled', 'POST', {
 				auctionId,
 				bidIds: bidsResp.bids.map((b: any) => b.id),
 			}),
@@ -122,7 +122,7 @@ describe('Clearing price auction API', () => {
 
 		// Create bid payment
 		res = await app.handle(
-			jsonRequest('http://localhost/clearing/create-bid-payment', 'POST', {
+			jsonRequest('http://localhost/api/clearing/create-bid-payment', 'POST', {
 				auctionId,
 				bidderAddress: 'tb1p_buyer_x',
 				bidAmount: 21000,
@@ -138,7 +138,7 @@ describe('Clearing price auction API', () => {
 
 		// Confirm payment
 		res = await app.handle(
-			jsonRequest('http://localhost/clearing/confirm-bid-payment', 'POST', {
+			jsonRequest('http://localhost/api/clearing/confirm-bid-payment', 'POST', {
 				bidId,
 				transactionId: 'tx_mock_123',
 			}),
@@ -147,13 +147,13 @@ describe('Clearing price auction API', () => {
 		expect(json.success).toBe(true)
 
 		// Bid payment status
-		res = await app.handle(new Request(`http://localhost/clearing/bid-payment-status/${bidId}`))
+		res = await app.handle(new Request(`http://localhost/api/clearing/bid-payment-status/${bidId}`))
 		json = await res.json()
 		expect(json.status).toBe('payment_confirmed')
 
 		// Process settlement -> artifacts generated
 		res = await app.handle(
-			jsonRequest('http://localhost/clearing/process-settlement', 'POST', {
+			jsonRequest('http://localhost/api/clearing/process-settlement', 'POST', {
 				auctionId,
 			}),
 		)
@@ -163,7 +163,7 @@ describe('Clearing price auction API', () => {
 		expect(json.artifacts.length).toBeGreaterThanOrEqual(1)
 
 		// Auction payments listing
-		res = await app.handle(new Request(`http://localhost/clearing/auction-payments/${auctionId}`))
+		res = await app.handle(new Request(`http://localhost/api/clearing/auction-payments/${auctionId}`))
 		json = await res.json()
 		expect(Array.isArray(json.bids)).toBe(true)
 		expect(json.bids.find((b: any) => b.id === bidId)?.status).toBe('settled')

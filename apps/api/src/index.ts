@@ -5,6 +5,7 @@ import { helloDutch } from '@originals/dutch'
 import { db as packageDb, getBitcoinNetwork, version, SecureDutchyDatabase } from '@originals/dutch'
 import { db as svcDb } from './services/db'
 import * as bitcoin from 'bitcoinjs-lib'
+type BodyInit = Blob | ArrayBuffer | DataView | Uint8Array | ReadableStream | null | string
 
 // Configure allowed origins for CORS at the API level
 const allowedOriginsFromEnv = (Bun.env.ALLOWED_ORIGINS || '')
@@ -136,6 +137,41 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
     // Listings
     .get(
       '/auctions',
+      ({ query }) =>
+        withNetworkOverride(query?.network as any, () => {
+          const now = Math.floor(Date.now() / 1000)
+          const list = database.listAuctions({
+            status: (query.status as any) || undefined,
+            type: (query.type as any) || undefined,
+          })
+          const enriched = list.map((a: any) => {
+            if (a.auction_type === 'single') {
+              const linear = database.calculateCurrentPrice(a, now)
+              const stepped = database.calculatePriceWithIntervals(a, now)
+              return {
+                ...a,
+                pricing: {
+                  currentPriceLinear: linear.currentPrice,
+                  currentPriceStepped: stepped.currentPrice,
+                  at: now,
+                },
+              }
+            }
+            return { ...a, pricing: null }
+          })
+          return { ok: true, network: getBitcoinNetwork(), items: enriched }
+        }),
+      {
+        query: t.Object({
+          status: t.Optional(t.Union([t.Literal('active'), t.Literal('sold'), t.Literal('expired')])),
+          type: t.Optional(t.Union([t.Literal('single'), t.Literal('clearing')])) ,
+          network: t.Optional(t.String()),
+        }),
+      },
+    )
+    // Duplicate under /api for web client
+    .get(
+      '/api/auctions',
       ({ query }) =>
         withNetworkOverride(query?.network as any, () => {
           const now = Math.floor(Date.now() / 1000)
@@ -756,6 +792,29 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
     })
     .post('/admin/check-escrow-timeouts', () => {
       return database.checkEscrowTimeouts()
+    })
+
+    // Forward all /api/* requests to existing handlers without the /api prefix
+    // This enables a unified /api prefix for all endpoints without refactoring every route.
+    .all('/api/*', async ({ request }): Promise<Response> => {
+      const url = new URL(request.url)
+      const forwarded = new URL(request.url)
+      const stripped = url.pathname.replace(/^\/api\/?/, '/')
+      forwarded.pathname = stripped === '//' ? '/' : stripped
+      const method = request.method.toUpperCase()
+      let body: BodyInit | undefined
+      if (method !== 'GET' && method !== 'HEAD') {
+        try {
+          const buf = await request.arrayBuffer()
+          body = buf
+        } catch {}
+      }
+      const forwardedReq = new Request(forwarded.toString(), {
+        method,
+        headers: request.headers,
+        body,
+      })
+      return app.handle(forwardedReq)
     })
 
     // Serve static assets from Astro's dist for css/js/html requests

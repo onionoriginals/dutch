@@ -71,8 +71,8 @@ beforeAll(() => {
 })
 
 describe('health endpoints', () => {
-  test('GET /health returns ok and counts', async () => {
-    const res = await app.handle(new Request('http://localhost/health'))
+  test('GET /api/health returns ok and counts', async () => {
+    const res = await app.handle(new Request('http://localhost/api/health'))
     expect(res.status).toBe(200)
     const body: any = await res.json()
     expect(body.ok).toBe(true)
@@ -81,7 +81,7 @@ describe('health endpoints', () => {
   })
 
   test('network override with query param', async () => {
-    const res = await app.handle(new Request('http://localhost/health?network=regtest'))
+    const res = await app.handle(new Request('http://localhost/api/health?network=regtest'))
     const body: any = await res.json()
     expect(body.network).toBe('regtest')
     // env should remain mainnet after request
@@ -90,8 +90,8 @@ describe('health endpoints', () => {
 })
 
 describe('listings and filters', () => {
-  test('GET /auctions returns array', async () => {
-    const res = await app.handle(new Request('http://localhost/auctions'))
+  test('GET /api/auctions returns array', async () => {
+    const res = await app.handle(new Request('http://localhost/api/auctions'))
     expect(res.status).toBe(200)
     const body: any = await res.json()
     expect(body.ok).toBe(true)
@@ -100,41 +100,41 @@ describe('listings and filters', () => {
   })
 
   test('filter by status', async () => {
-    const res = await app.handle(new Request('http://localhost/auctions?status=active'))
+    const res = await app.handle(new Request('http://localhost/api/auctions?status=active'))
     const body: any = await res.json()
     expect(body.items.every((i: any) => i.status === 'active')).toBe(true)
   })
 
   test('filter by type=clearing', async () => {
-    const res = await app.handle(new Request('http://localhost/auctions?type=clearing'))
+    const res = await app.handle(new Request('http://localhost/api/auctions?type=clearing'))
     const body: any = await res.json()
     expect(body.items.every((i: any) => i.auction_type === 'clearing')).toBe(true)
   })
 })
 
 describe('pricing endpoints and expiration', () => {
-  test('GET /auction/:id returns details and pricing', async () => {
-    const res = await app.handle(new Request('http://localhost/auction/a1'))
+  test('GET /api/auction/:id returns details and pricing', async () => {
+    const res = await app.handle(new Request('http://localhost/api/auction/a1'))
     const body: any = await res.json()
     expect(body.ok).toBe(true)
     expect(body.auction.id).toBe('a1')
     expect(body.pricing.currentPriceLinear).toBeGreaterThan(0)
   })
 
-  test('GET /price/:id marks expired if past end_time', async () => {
+  test('GET /api/price/:id marks expired if past end_time', async () => {
     // a2 was in the past and should be expired by calling price
-    const res = await app.handle(new Request('http://localhost/price/a2'))
+    const res = await app.handle(new Request('http://localhost/api/price/a2'))
     const body: any = await res.json()
     expect(body.ok).toBe(true)
     expect(body.status).toBe('expired')
     // follow-up: details reflect expired
-    const res2 = await app.handle(new Request('http://localhost/auction/a2'))
+    const res2 = await app.handle(new Request('http://localhost/api/auction/a2'))
     const body2: any = await res2.json()
     expect(body2.auction.status).toBe('expired')
   })
 
-  test('GET /price/:id/stepped returns stepped price', async () => {
-    const res = await app.handle(new Request('http://localhost/price/a1/stepped'))
+  test('GET /api/price/:id/stepped returns stepped price', async () => {
+    const res = await app.handle(new Request('http://localhost/api/price/a1/stepped'))
     const body: any = await res.json()
     expect(body.ok).toBe(true)
     expect(body.price).toBeGreaterThan(0)
@@ -143,7 +143,7 @@ describe('pricing endpoints and expiration', () => {
 
 describe('manual status updates', () => {
   test('reject invalid status', async () => {
-    const res = await app.handle(new Request('http://localhost/auction/a1/status', {
+    const res = await app.handle(new Request('http://localhost/api/auction/a1/status', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ status: 'invalid' }),
@@ -153,14 +153,14 @@ describe('manual status updates', () => {
   })
 
   test('accept valid status', async () => {
-    const res = await app.handle(new Request('http://localhost/auction/a1/status', {
+    const res = await app.handle(new Request('http://localhost/api/auction/a1/status', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ status: 'sold' }),
     }))
     const body: any = await res.json()
     expect(body.ok).toBe(true)
-    const res2 = await app.handle(new Request('http://localhost/auction/a1'))
+    const res2 = await app.handle(new Request('http://localhost/api/auction/a1'))
     const body2: any = await res2.json()
     expect(body2.auction.status).toBe('sold')
   })

@@ -1,7 +1,7 @@
 import { app } from '../index'
 import { __testUtils, db } from '../services/db'
 
-const fetchApi = (path: string, init?: RequestInit) => app.handle(new Request(`http://localhost${path}`, init))
+const fetchApi = (path: string, init?: RequestInit) => app.handle(new Request(`http://localhost/api${path}`, init))
 
 describe('Recovery endpoints', () => {
   beforeEach(() => {
@@ -28,17 +28,17 @@ describe('Recovery endpoints', () => {
     json = await res.json()
     expect(json.ok).toBe(true)
 
-    res = await fetchApi('/api/recovery/simulate-disaster', { method: 'POST' })
+    res = await fetchApi('/recovery/simulate-disaster', { method: 'POST' })
     expect(res.status).toBe(200)
     json = await res.json()
     expect(json.simulated).toBe(true)
 
-    res = await fetchApi('/api/recovery/status')
+    res = await fetchApi('/recovery/status')
     expect(res.status).toBe(200)
     json = await res.json()
     expect(json.hasSeed).toBe(true)
 
-    res = await fetchApi('/api/recovery/documentation')
+    res = await fetchApi('/recovery/documentation')
     expect(res.status).toBe(200)
     json = await res.json()
     expect(json.title).toMatch(/Disaster Recovery/i)

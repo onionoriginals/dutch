@@ -1,7 +1,7 @@
 import { app } from '../index'
 import { __testUtils } from '../services/db'
 
-const fetchApi = (path: string, init?: RequestInit) => app.handle(new Request(`http://localhost${path}`, init))
+const fetchApi = (path: string, init?: RequestInit) => app.handle(new Request(`http://localhost/api${path}`, init))
 
 describe('Seed lifecycle endpoints', () => {
   beforeEach(() => {

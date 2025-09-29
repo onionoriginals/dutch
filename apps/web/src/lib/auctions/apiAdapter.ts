@@ -1,7 +1,7 @@
 import { DateTime } from 'luxon'
 import type { AuctionsQuery, AuctionsResult, AuctionSummary } from './common'
 
-const API_BASE: string = (import.meta as any)?.env?.PUBLIC_API_BASE || 'http://localhost:3000'
+const API_BASE: string = ((import.meta as any)?.env?.PUBLIC_API_BASE || 'http://localhost:3000') + '/api'
 
 type ApiAuction = {
   id: string
@@ -105,6 +105,15 @@ export async function queryAuctions(params: AuctionsQuery = {}): Promise<Auction
   const paged = items.slice(startIdx, endIdx)
 
   return { items: paged, total, page, pageSize }
+}
+
+export async function fetchAuction(id: string): Promise<{ auction: AuctionSummary; pricing?: { currentPriceLinear?: number; currentPriceStepped?: number } } | null> {
+  const resp = await fetch(`${API_BASE}/auction/${encodeURIComponent(id)}`)
+  if (!resp.ok) return null
+  const json = await resp.json() as any
+  if (!json?.ok || !json?.auction) return null
+  const summary = normalize(json.auction as ApiAuction)
+  return { auction: summary, pricing: json.pricing }
 }
 
 
