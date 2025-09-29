@@ -1,0 +1,11 @@
+---
+interface Props {
+  variant?: 'default' | 'destructive';
+}
+const { variant = 'default', ...attrs } = Astro.props as Props & Record<string, any>;
+const klass = variant === 'destructive' ? 'badge badge-destructive' : 'badge badge-default';
+---
+<span class={klass} {...attrs}>
+  <slot />
+</span>
+

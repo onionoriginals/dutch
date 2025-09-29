@@ -1,0 +1,11 @@
+---
+interface Props {
+  disabled?: boolean;
+}
+const { disabled = false, ...attrs } = Astro.props as Props & Record<string, any>;
+---
+<select class="select" disabled={disabled} {...attrs}>
+  <slot />
+  <!-- Consumers should provide <option> children -->
+</select>
+

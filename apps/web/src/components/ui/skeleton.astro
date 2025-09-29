@@ -1,0 +1,8 @@
+---
+interface Props {
+  animated?: boolean;
+}
+const { animated = true, ...attrs } = Astro.props as Props & Record<string, any>;
+---
+<div class="skeleton" data-animated={animated ? 'true' : 'false'} {...attrs} />
+
