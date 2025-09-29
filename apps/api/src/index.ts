@@ -753,6 +753,34 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
       return database.checkEscrowTimeouts()
     })
 
+    // Serve static assets from Astro's dist for css/js/html requests
+    .get('/*', async ({ request }) => {
+      try {
+        const url = new URL(request.url)
+        let pathname: string = url.pathname
+        if (pathname === '/') pathname = '/index.html'
+        const cleanPath: string = String(pathname).split('?')[0] || ''
+        const ext = (cleanPath.split('.').pop() || '').toLowerCase()
+        if (!['css', 'js', 'html'].includes(ext)) {
+          return new Response('Not Found', { status: 404 })
+        }
+        const distDir = new URL('../../web/dist/', import.meta.url)
+        const fileUrl = new URL(cleanPath.replace(/^\//, ''), distDir)
+        const file = Bun.file(fileUrl)
+        if (!(await file.exists())) {
+          return new Response('Not Found', { status: 404 })
+        }
+        const contentType = ext === 'css'
+          ? 'text/css; charset=utf-8'
+          : ext === 'js'
+            ? 'application/javascript; charset=utf-8'
+            : 'text/html; charset=utf-8'
+        return new Response(file, { headers: { 'content-type': contentType } })
+      } catch {
+        return new Response('Not Found', { status: 404 })
+      }
+    })
+
   return app
 }
 
