@@ -1,0 +1,7 @@
+@media print {
+  .card {
+    break-inside: avoid;
+    box-shadow: none !important;
+    border-color: #e5e7eb !important;
+  }
+}

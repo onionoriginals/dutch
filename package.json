@@ -1,29 +1,30 @@
 {
-  "name": "originals-monorepo",
+  "name": "auction-preview-app",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
-  "packageManager": "bun@1.2.22",
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
-  "module": "index.ts",
   "scripts": {
-    "dev": "turbo run dev --parallel",
-    "build": "turbo run build",
-    "start": "turbo run start --filter=@originals/api",
-    "clean": "rimraf node_modules bun.lock && find . -name node_modules -type d -prune -exec rm -rf {} +",
-    "dev:api": "bun --cwd apps/api run dev",
-    "dev:web": "bun --cwd apps/web run dev",
-    "dev:dutch": "bun --cwd packages/dutch run dev",
-    "start:api": "bun --cwd apps/api run start",
-    "start:web": "bun --cwd apps/web run start"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "postinstall": "tailwindcss -v >/dev/null 2>&1 || true"
+  },
+  "dependencies": {
+    "next": "^14.2.12",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
-    "@types/bun": "latest",
-    "esbuild": "^0.25.10",
-    "rimraf": "^6.0.1",
-    "turbo": "^2.1.1",
-    "typescript": "^5.4.0"
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.13",
+    "typescript": "^5.6.3",
+    "@types/node": "^20.16.11",
+    "@types/react": "^18.3.8",
+    "@types/react-dom": "^18.3.0",
+    "eslint": "^8.57.0",
+    "eslint-config-next": "^14.2.12"
   }
 }

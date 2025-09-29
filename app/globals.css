@@ -1,0 +1,9 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@media print {
+  /* Hide navigation or interactive-only elements by default */
+  .no-print { display: none !important; }
+  body { background: white; color: black; }
+}
