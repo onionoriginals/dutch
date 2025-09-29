@@ -3,7 +3,8 @@ import { defineConfig } from 'astro/config'
 export default defineConfig({
   server: {
     host: true,
-    port: 4321
+    port: 4321,
+    allowedHosts: ['dutch-production.up.railway.app']
   },
   preview: {
     host: true,
