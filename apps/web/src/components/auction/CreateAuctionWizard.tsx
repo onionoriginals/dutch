@@ -99,7 +99,6 @@ export default function CreateAuctionWizard() {
     <div>
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <h2>Create Auction</h2>
-        <StepProgress total={steps.length + 1} />
       </header>
 
       {/* Type selection independent of form schema */}
@@ -111,6 +110,10 @@ export default function CreateAuctionWizard() {
         onSubmit={onSubmit}
         className="mt-3"
       >
+        {/* Progress indicator within wizard context */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+          <StepProgress total={steps.length + 1} />
+        </div>
         <FormAutosave onValuesChange={setFormValues} />
 
         {/* Step 1: Details */}
