@@ -10,6 +10,10 @@ export default defineConfig({
     port: 4321
   },
   vite: {
+    preview: {
+      // Allow Railway preview host header
+      allowedHosts: ['dutch-production.up.railway.app']
+    },
     resolve: {
       // Prefer the "browser" export condition so @originals/dutch resolves to its browser build
       conditions: ['browser']
