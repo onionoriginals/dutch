@@ -15,7 +15,6 @@ import * as bip39 from 'bip39'
 import { BIP32Factory, type BIP32Interface } from 'bip32'
 import * as tinySecp256k1 from 'tiny-secp256k1'
 import * as bitcoin from 'bitcoinjs-lib'
-import { initEccLib } from 'bitcoinjs-lib'
 
 export type BitcoinNetwork = 'mainnet' | 'testnet' | 'signet' | 'regtest';
 
@@ -86,7 +85,7 @@ export interface MempoolClientLike {
 }
 
 const bip32 = BIP32Factory(tinySecp256k1 as any)
-initEccLib(tinySecp256k1 as any)
+// initEccLib(tinySecp256k1 as any)
 
 function nowSec(): number {
   return Math.floor(Date.now() / 1000)

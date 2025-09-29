@@ -4,8 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "bun --watch src/index.ts",
-    "build": "bun build src/index.ts tiny-secp256k1 bitcoinjs-lib ecpair --outdir dist --target bun",
-    "start": "bun dist/index.js",
+    "build": "bun build src/index.ts tiny-secp256k1 ecpair --outdir dist --target bun",
+    "start": "bun dist/src/index.js",
     "test": "bun test"
   },
   "dependencies": {
