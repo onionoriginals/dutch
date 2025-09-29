@@ -21,7 +21,7 @@ export function NumberInput({ step = 'any', ...rest }: NumberInputProps) {
       step={step}
       aria-invalid={hasError || undefined}
       aria-describedby={hasError ? errorId : undefined}
-      {...register(name)}
+      {...register(name, { valueAsNumber: true })}
       onChange={onChange}
       {...rest}
     />

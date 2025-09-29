@@ -65,7 +65,21 @@ export function Form<TValues extends Record<string, any>>({ schema, defaultValue
   const [stepIndex, setStepIndex] = React.useState(0)
 
   const allChildren = React.Children.toArray(children)
-  const steps = allChildren.filter(isFormStep) as React.ReactElement<FormStepProps>[]
+
+  function collectSteps(nodes: React.ReactNode): React.ReactElement<FormStepProps>[] {
+    const collected: React.ReactElement<FormStepProps>[] = []
+    React.Children.forEach(nodes, (child) => {
+      if (!child) return
+      if (isFormStep(child)) {
+        collected.push(child)
+      } else if (React.isValidElement(child) && child.type === React.Fragment) {
+        collected.push(...collectSteps(child.props.children))
+      }
+    })
+    return collected
+  }
+
+  const steps = collectSteps(children)
 
   const currentStep = steps[stepIndex]
   const currentStepFields = currentStep?.props.fields ?? []
@@ -112,6 +126,24 @@ export function Form<TValues extends Record<string, any>>({ schema, defaultValue
     form: methods
   }
 
+  function renderFiltered(nodes: React.ReactNode, levelKey: string): React.ReactNode {
+    return React.Children.map(nodes, (child, index) => {
+      if (!child) return child
+      if (isFormStep(child)) {
+        return steps.indexOf(child) === stepIndex ? React.cloneElement(child, { key: `${levelKey}-step-${index}` }) : null
+      }
+      if (React.isValidElement(child) && child.type === React.Fragment) {
+        return (
+          <React.Fragment key={`${levelKey}-frag-${index}`}>
+            {renderFiltered(child.props.children, `${levelKey}-frag-${index}`)}
+          </React.Fragment>
+        )
+      }
+      // Return non-step nodes unchanged to avoid unnecessary remounts
+      return child
+    })
+  }
+
   return (
     <FormWizardContext.Provider value={wizardContext}>
       <FormProvider {...methods}>
@@ -121,14 +153,7 @@ export function Form<TValues extends Record<string, any>>({ schema, defaultValue
           onKeyDown={handleKeyDown}
           noValidate
         >
-          {/* Render only the active step and any non-step elements (like a header) */}
-          {allChildren.map((child, index) => {
-            if (isFormStep(child)) {
-              if (steps.indexOf(child) !== stepIndex) return null
-              return React.cloneElement(child, { key: `step-${index}` })
-            }
-            return <React.Fragment key={index}>{child}</React.Fragment>
-          })}
+          {renderFiltered(children, 'root')}
         </form>
       </FormProvider>
     </FormWizardContext.Provider>
