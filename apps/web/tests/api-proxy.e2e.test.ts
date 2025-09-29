@@ -2,7 +2,7 @@ import { beforeAll, afterAll, describe, test, expect } from 'bun:test'
 
 let apiStop: (() => void) | undefined
 let webStop: (() => void) | undefined
-let webOrigin = ''
+let apiOrigin = ''
 
 async function startApi(): Promise<string> {
   const mod = await import('../../api/src/index.ts')
@@ -13,34 +13,8 @@ async function startApi(): Promise<string> {
   return `http://127.0.0.1:${port}`
 }
 
-async function startWeb(apiOrigin: string): Promise<string> {
-  const PORT = 44555
-  webOrigin = `http://127.0.0.1:${PORT}`
-  ;(globalThis as any).process ||= { env: {} as any }
-  ;(globalThis as any).process.env.HOST = '127.0.0.1'
-  ;(globalThis as any).process.env.PORT = String(PORT)
-  ;(globalThis as any).process.env.API_INTERNAL_ORIGIN = apiOrigin
-  const mod: any = await import('../src/server.ts')
-  const srv = mod.server
-  webStop = () => srv?.stop?.()
-
-  const startedAt = Date.now()
-  let lastErr: any
-  while (Date.now() - startedAt < 8000) {
-    try {
-      const r = await fetch(`${webOrigin}/api/hello`)
-      if (r.ok) return webOrigin
-    } catch (err) {
-      lastErr = err
-    }
-    await new Promise(r => setTimeout(r, 100))
-  }
-  throw new Error('web server failed to start: ' + String(lastErr || 'timeout'))
-}
-
 beforeAll(async () => {
-  const apiOrigin = await startApi()
-  await startWeb(apiOrigin)
+  apiOrigin = await startApi()
 })
 
 afterAll(() => {
@@ -48,9 +22,9 @@ afterAll(() => {
   if (apiStop) apiStop()
 })
 
-describe('web reverse proxy', () => {
-  test('GET /api/hello proxies to API /hello', async () => {
-    const res = await fetch(`${webOrigin}/api/hello`)
+describe('api serves built web and endpoints', () => {
+  test('GET /hello responds from API', async () => {
+    const res = await fetch(`${apiOrigin}/hello`)
     expect(res.status).toBe(200)
     const json = await res.json()
     expect(typeof json.message).toBe('string')
