@@ -2,14 +2,13 @@
 import '../../styles/globals.css'
 import Filters from '../../components/auctions/Filters'
 import List from '../../components/auctions/List'
-import { parseQueryFromSearch, getDefaultPageSize } from '../../lib/auctions/common'
-import { queryAuctions } from '../../lib/auctions/apiAdapter'
+import { parseQueryFromSearch } from '../../lib/auctions/common'
 
 const search = Astro.url.searchParams
 const q = parseQueryFromSearch(search)
 
-// SSR initial data for fast first paint
-const initial = await queryAuctions({ ...q, page: q.page ?? 1, pageSize: q.pageSize ?? getDefaultPageSize() })
+// Skip SSR data fetching during build; the list will fetch on the client
+const initial = undefined
 ---
 <html>
   <head>
