@@ -2,7 +2,11 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "allowJs": true,
-    "lib": ["ESNext", "DOM"]
+    "lib": ["ESNext", "DOM"],
+    "jsx": "react-jsx",
+    "types": ["react", "react-dom"],
+    "moduleResolution": "bundler"
   },
-  "include": ["src/**/*", "astro.config.mjs"]
+  "include": ["src/**/*", "astro.config.mjs"],
+  "files": ["src/types/react-shim.d.ts"]
 }

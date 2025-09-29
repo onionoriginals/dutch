@@ -53,7 +53,7 @@ export function FormStep(props: FormStepProps) {
 // Internal marker to detect step elements
 (FormStep as any).__isFormStep = true
 
-export function Form<TValues extends Record<string, any>>({ schema, defaultValues, onSubmit, children, className }: FormProps<TValues>) {
+export function Form<TValues extends Record<string, any>>({ schema, defaultValues, onSubmit, children, className }: any) {
   const methods = useForm<TValues>({
     resolver: zodResolver(schema as any),
     defaultValues: defaultValues as any,
