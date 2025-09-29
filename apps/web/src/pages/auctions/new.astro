@@ -1,18 +1,29 @@
 ---
-import React from 'react'
-import CreateAuctionWizard from '../../components/auction/CreateAuctionWizard'
-import '../../styles/globals.css'
+import CreateAuctionWizard from '../../components/auction/CreateAuctionWizard';
+import '../../styles/globals.css';
 ---
 <html>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Create Auction</title>
+    <title>Create Auction - Originals</title>
   </head>
   <body>
-    <main style="padding: 24px; max-width: 960px; margin: 0 auto;">
-      <CreateAuctionWizard client:load />
+    <main class="min-h-screen bg-gray-50 dark:bg-gray-900">
+      <div class="mx-auto max-w-2xl px-4 py-8">
+        <nav class="mb-8">
+          <a 
+            href="/" 
+            class="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 text-sm underline"
+          >
+            ← Back to Price Schedule Demo
+          </a>
+        </nav>
+        
+        <div class="rounded-lg bg-white p-6 shadow-sm dark:bg-gray-800">
+          <CreateAuctionWizard client:only="react" />
+        </div>
+      </div>
     </main>
   </body>
 </html>
-

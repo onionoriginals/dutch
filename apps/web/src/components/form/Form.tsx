@@ -1,10 +1,11 @@
 import React from 'react'
-import { FormProvider, useForm, UseFormReturn } from 'react-hook-form'
+import { FormProvider, useForm } from 'react-hook-form'
+import type { UseFormReturn } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import type { ZodTypeAny } from 'zod'
+import type { ZodSchema } from 'zod'
 
 type FormProps<TValues> = {
-  schema: ZodTypeAny
+  schema: ZodSchema<TValues>
   defaultValues?: Partial<TValues>
   onSubmit: (values: TValues) => void | Promise<void>
   children: React.ReactNode
@@ -41,7 +42,6 @@ export type FormStepProps = {
 function isFormStep(element: React.ReactNode): element is React.ReactElement<FormStepProps> {
   return Boolean(
     React.isValidElement(element) &&
-      // @ts-expect-error internal marker
       (element.type as any)?.__isFormStep === true
   )
 }
@@ -51,12 +51,11 @@ export function FormStep(props: FormStepProps) {
 }
 
 // Internal marker to detect step elements
-// @ts-expect-error mark
-FormStep.__isFormStep = true
+(FormStep as any).__isFormStep = true
 
 export function Form<TValues extends Record<string, any>>({ schema, defaultValues, onSubmit, children, className }: FormProps<TValues>) {
   const methods = useForm<TValues>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(schema as any),
     defaultValues: defaultValues as any,
     mode: 'onBlur',
     reValidateMode: 'onChange',

@@ -87,48 +87,93 @@ export default function CreateAuctionWizard() {
 
   if (submittedPayload) {
     return (
-      <div>
-        <h2>Success</h2>
-        <p>Your auction has been created.</p>
-        <pre aria-label="Normalized payload" style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(submittedPayload, null, 2)}</pre>
+      <div className="rounded-lg bg-green-50 p-8 text-center dark:bg-green-900/20">
+        <div className="text-green-600 dark:text-green-400">
+          <svg className="mx-auto h-16 w-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <h2 className="text-2xl font-bold mb-2">Auction Created Successfully!</h2>
+          <p className="text-lg mb-6">Your {submittedPayload.type} auction "{submittedPayload.title}" has been created.</p>
+          
+          <div className="bg-white/80 dark:bg-gray-800/80 rounded-lg p-4 text-left mb-6">
+            <h3 className="font-semibold mb-2 text-gray-900 dark:text-gray-100">Auction Details:</h3>
+            <div className="text-sm space-y-1 text-gray-700 dark:text-gray-300">
+              <p><strong>Type:</strong> {submittedPayload.type === 'english' ? 'English (Ascending Bid)' : 'Dutch (Descending Price)'}</p>
+              <p><strong>Title:</strong> {submittedPayload.title}</p>
+              {submittedPayload.description && <p><strong>Description:</strong> {submittedPayload.description}</p>}
+              <p><strong>Start Time:</strong> {new Date(submittedPayload.timing.startTime).toLocaleString()}</p>
+              <p><strong>End Time:</strong> {new Date(submittedPayload.timing.endTime).toLocaleString()}</p>
+            </div>
+          </div>
+
+          <div className="flex gap-4 justify-center">
+            <button 
+              onClick={() => setSubmittedPayload(null)}
+              className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"
+            >
+              Create Another Auction
+            </button>
+            <button 
+              onClick={() => window.location.href = '/'}
+              className="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 font-medium dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500"
+            >
+              Back to Home
+            </button>
+          </div>
+          
+          <details className="mt-6 text-left">
+            <summary className="cursor-pointer text-sm underline">View Raw Payload</summary>
+            <pre className="mt-2 text-xs bg-gray-100 dark:bg-gray-800 p-3 rounded overflow-auto text-gray-800 dark:text-gray-200" style={{ whiteSpace: 'pre-wrap' }}>
+              {JSON.stringify(submittedPayload, null, 2)}
+            </pre>
+          </details>
+        </div>
       </div>
     )
   }
 
   return (
-    <div>
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <h2>Create Auction</h2>
+    <div className="space-y-6">
+      <header className="border-b border-gray-200 pb-4 dark:border-gray-700">
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Create Auction</h2>
+        <p className="text-gray-600 dark:text-gray-400 mt-1">Set up your auction with detailed pricing and timing configuration</p>
       </header>
 
       {/* Type selection independent of form schema */}
-      <AuctionTypeSelector value={type} onChange={setType} />
+      <AuctionTypeSelector value={type} onChange={setType} className="mb-6" />
 
       <Form<any>
         schema={schema}
         defaultValues={defaultValues}
         onSubmit={onSubmit}
-        className="mt-3"
+        className="space-y-6"
       >
         {/* Progress indicator within wizard context */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <div className="flex justify-between items-center mb-6">
+          <h3 className="text-lg font-medium text-gray-900 dark:text-white">Auction Details</h3>
           <StepProgress total={steps.length + 1} />
         </div>
         <FormAutosave onValuesChange={setFormValues} />
 
         {/* Step 1: Details */}
         <FormStep fields={steps[0]!}> 
-          <FormField name="title">
-            <FieldLabel>Title</FieldLabel>
-            <Input placeholder="Amazing item" />
-            <FieldError />
-          </FormField>
-          <FormField name="description">
-            <FieldLabel>Description</FieldLabel>
-            <Textarea placeholder="Optional description" rows={4} />
-            <FieldError />
-          </FormField>
-          <StepNav />
+          <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6 space-y-6">
+            <div>
+              <h4 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Basic Information</h4>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">Enter the basic details for your auction</p>
+            </div>
+            <FormField name="title">
+              <FieldLabel>Title</FieldLabel>
+              <Input placeholder="Amazing item" />
+              <FieldError />
+            </FormField>
+            <FormField name="description">
+              <FieldLabel>Description</FieldLabel>
+              <Textarea placeholder="Optional description (max 500 characters)" rows={4} />
+              <FieldError />
+            </FormField>
+            <StepNav />
+          </div>
         </FormStep>
 
         {/* Step 2: Pricing (conditional) */}
@@ -215,10 +260,27 @@ export default function CreateAuctionWizard() {
 function StepNav({ submitLabel = 'Next' }: { submitLabel?: string }) {
   const { back, next, isFirst, isLast } = useFormWizard()
   return (
-    <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
-      <button type="button" onClick={back} disabled={isFirst} aria-label="Previous step">Back</button>
-      <button type={isLast ? 'submit' : 'button'} onClick={isLast ? undefined : next} aria-label={isLast ? 'Submit form' : 'Next step'}>
-        {isLast ? submitLabel : 'Next'}
+    <div className="flex justify-between items-center pt-6 mt-6 border-t border-gray-200 dark:border-gray-700">
+      <button 
+        type="button" 
+        onClick={back} 
+        disabled={isFirst} 
+        aria-label="Previous step"
+        className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+          isFirst 
+            ? 'text-gray-400 cursor-not-allowed dark:text-gray-600' 
+            : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700'
+        }`}
+      >
+        ← Back
+      </button>
+      <button 
+        type={isLast ? 'submit' : 'button'} 
+        onClick={isLast ? undefined : next} 
+        aria-label={isLast ? 'Submit form' : 'Next step'}
+        className="px-6 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+      >
+        {isLast ? submitLabel : 'Next →'}
       </button>
     </div>
   )
@@ -226,13 +288,18 @@ function StepNav({ submitLabel = 'Next' }: { submitLabel?: string }) {
 
 function StepProgress({ total }: { total: number }) {
   const { stepIndex } = useFormWizard()
-  const pct = Math.round(((stepIndex + 1) / total) * 100)
+  const current = stepIndex + 1
   return (
-    <div aria-label="Progress" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <div style={{ width: 160, height: 6, background: 'var(--seg-border,#e5e7eb)', borderRadius: 999 }}>
-        <div style={{ width: `${pct}%`, height: '100%', background: 'dodgerblue', borderRadius: 999 }} />
+    <div aria-label="Progress" className="flex items-center gap-3">
+      <div className="w-40 h-2 bg-gray-200 rounded-full dark:bg-gray-700">
+        <div 
+          className="h-full bg-blue-600 rounded-full transition-all duration-300" 
+          style={{ width: `${(current / total) * 100}%` }}
+        />
       </div>
-      <span style={{ fontSize: 12 }}>{pct}%</span>
+      <span className="text-sm text-gray-600 dark:text-gray-400 min-w-0">
+        Step {current} of {total}
+      </span>
     </div>
   )
 }
@@ -242,9 +309,101 @@ function ReviewBlock({ type }: { type: AuctionType }) {
   const values = form.watch()
   const summary = type === 'english' ? normalizeEnglish(values as any) : normalizeDutch(values as any)
   return (
-    <section aria-label="Review" style={{ marginTop: 16 }}>
-      <h3>Review</h3>
-      <pre style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(summary, null, 2)}</pre>
+    <section aria-label="Review" className="space-y-6">
+      <div>
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Review Your Auction</h3>
+        <p className="text-gray-600 dark:text-gray-400 mb-6">Please review all details before creating your auction.</p>
+      </div>
+      
+      <div className="grid gap-6 md:grid-cols-2">
+        <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+          <h4 className="font-medium text-gray-900 dark:text-white mb-3">Basic Information</h4>
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-gray-600 dark:text-gray-400">Type:</span>
+              <span className="font-medium">{type === 'english' ? 'English (Ascending Bid)' : 'Dutch (Descending Price)'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-600 dark:text-gray-400">Title:</span>
+              <span className="font-medium">{values.title || 'Not set'}</span>
+            </div>
+            {values.description && (
+              <div className="flex justify-between">
+                <span className="text-gray-600 dark:text-gray-400">Description:</span>
+                <span className="font-medium">{values.description}</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+          <h4 className="font-medium text-gray-900 dark:text-white mb-3">Timing</h4>
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-gray-600 dark:text-gray-400">Start:</span>
+              <span className="font-medium">{values.startTime ? new Date(values.startTime).toLocaleString() : 'Not set'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-600 dark:text-gray-400">End:</span>
+              <span className="font-medium">{values.endTime ? new Date(values.endTime).toLocaleString() : 'Not set'}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 md:col-span-2">
+          <h4 className="font-medium text-gray-900 dark:text-white mb-3">Pricing Configuration</h4>
+          <div className="grid gap-4 md:grid-cols-2 text-sm">
+            {type === 'english' ? (
+              <>
+                <div className="flex justify-between">
+                  <span className="text-gray-600 dark:text-gray-400">Starting Price:</span>
+                  <span className="font-medium">${values.startingPrice || 0}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600 dark:text-gray-400">Reserve Price:</span>
+                  <span className="font-medium">${values.reservePrice || 'None'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600 dark:text-gray-400">Bid Increment:</span>
+                  <span className="font-medium">${values.bidIncrement || 0}</span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex justify-between">
+                  <span className="text-gray-600 dark:text-gray-400">Start Price:</span>
+                  <span className="font-medium">${values.startPrice || 0}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600 dark:text-gray-400">End Price:</span>
+                  <span className="font-medium">${values.endPrice || 0}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600 dark:text-gray-400">Decrement Amount:</span>
+                  <span className="font-medium">${values.decrementAmount || 0}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600 dark:text-gray-400">Decrement Interval:</span>
+                  <span className="font-medium">{values.decrementIntervalSeconds || 0}s</span>
+                </div>
+                {values.buyNowPrice && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-600 dark:text-gray-400">Buy Now Price:</span>
+                    <span className="font-medium">${values.buyNowPrice}</span>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+      
+      <details className="mt-6">
+        <summary className="cursor-pointer text-sm text-gray-600 dark:text-gray-400 underline">View Technical Payload</summary>
+        <pre className="mt-2 text-xs bg-gray-100 dark:bg-gray-900 p-3 rounded overflow-auto text-gray-800 dark:text-gray-200 border" style={{ whiteSpace: 'pre-wrap' }}>
+          {JSON.stringify(summary, null, 2)}
+        </pre>
+      </details>
     </section>
   )
 }
