@@ -28,14 +28,20 @@ export default function AuctionsPage() {
   const [search, setSearch] = React.useState("");
   const [startDate, setStartDate] = React.useState("");
   const [endDate, setEndDate] = React.useState("");
+  const latestRequestId = React.useRef(0);
 
   const fetchData = React.useCallback(async () => {
+    const requestId = ++latestRequestId.current;
     setState((s: State) => ({ ...s, loading: true, error: undefined }));
     try {
       const res = await adapter.list({ ...filter, search, startDate: startDate || undefined, endDate: endDate || undefined });
-      setState({ items: res.items, total: res.total, loading: false });
+      if (requestId === latestRequestId.current) {
+        setState({ items: res.items, total: res.total, loading: false });
+      }
     } catch (e: any) {
-      setState({ items: [], total: 0, loading: false, error: e?.message || "Failed to load" });
+      if (requestId === latestRequestId.current) {
+        setState({ items: [], total: 0, loading: false, error: e?.message || "Failed to load" });
+      }
     }
   }, [filter, search, startDate, endDate]);
 

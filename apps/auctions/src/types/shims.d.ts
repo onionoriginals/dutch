@@ -5,6 +5,7 @@ declare module "react" {
   export function useEffect(...args: any[]): any;
   export function useCallback<T extends (...args: any[]) => any>(fn: T, deps: any[]): T;
   export function memo<T>(component: T): T;
+  export function useRef<T = any>(initial?: T): { current: T };
 }
 
 declare module "react/jsx-runtime" {
