@@ -17,7 +17,7 @@ type DraftShape = {
 const DRAFT_KEY = 'auction-create-draft-v1'
 
 function useDraftPersistence(type: AuctionType, values: any) {
-  const [restored, setRestored] = React.useState<Partial<DraftShape> | null>(null)
+  const [restored, setRestored] = React.useState(null as Partial<DraftShape> | null)
 
   React.useEffect(() => {
     try {
@@ -56,16 +56,16 @@ function useNavigationGuard(isDirty: boolean) {
 }
 
 export default function CreateAuctionWizard() {
-  const [type, setType] = React.useState<AuctionType>('english')
+  const [type, setType] = React.useState('english' as AuctionType)
   const schema = type === 'english' ? EnglishAuctionSchema : DutchAuctionSchema
   const steps = type === 'english' ? englishAuctionStepFields : dutchAuctionStepFields
 
-  const [formValues, setFormValues] = React.useState<any>({})
+  const [formValues, setFormValues] = React.useState({} as any)
   const { restored, clearDraft } = useDraftPersistence(type, formValues)
 
-  const [submittedPayload, setSubmittedPayload] = React.useState<any | null>(null)
+  const [submittedPayload, setSubmittedPayload] = React.useState(null as any | null)
 
-  const defaultValues = React.useMemo<Record<string, unknown>>(() => {
+  const defaultValues = React.useMemo(() => {
     if (restored?.values) return restored.values as Record<string, unknown>
     return {}
   }, [restored])
@@ -137,12 +137,13 @@ export default function CreateAuctionWizard() {
       <header className="border-b border-gray-200 pb-4 dark:border-gray-700">
         <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Create Auction</h2>
         <p className="text-gray-600 dark:text-gray-400 mt-1">Set up your auction with detailed pricing and timing configuration</p>
+        <WizardPreviewButton type={type} values={formValues} className="mt-3" />
       </header>
 
       {/* Type selection independent of form schema */}
       <AuctionTypeSelector value={type} onChange={setType} className="mb-6" />
 
-      <Form<any>
+      <Form
         schema={schema}
         defaultValues={defaultValues}
         onSubmit={onSubmit}
@@ -154,10 +155,11 @@ export default function CreateAuctionWizard() {
           <StepProgress total={steps.length + 1} />
         </div>
         <FormAutosave onValuesChange={setFormValues} />
+        <FormStepRouter />
 
         {/* Step 1: Details */}
         <FormStep fields={steps[0]!}> 
-          <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6 space-y-6">
+          <div id="details" className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6 space-y-6">
             <div>
               <h4 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Basic Information</h4>
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">Enter the basic details for your auction</p>
@@ -199,6 +201,7 @@ export default function CreateAuctionWizard() {
         ) : (
           <>
             <FormStep fields={steps[1]!}> 
+              <div id="pricing" className="space-y-6">
               <FormField name="startPrice">
                 <FieldLabel>Start price</FieldLabel>
                 <NumberInput min={0} inputMode="decimal" />
@@ -215,6 +218,7 @@ export default function CreateAuctionWizard() {
                 <FieldError />
               </FormField>
               <StepNav />
+              </div>
             </FormStep>
             <FormStep fields={steps[2]!}> 
               <FormField name="decrementAmount">
@@ -257,6 +261,24 @@ export default function CreateAuctionWizard() {
     </div>
   )
 }
+function WizardPreviewButton({ type, values, className }: { type: AuctionType; values: any; className?: string }) {
+  const href = React.useMemo(() => {
+    if (!type) return '#'
+    try {
+      const json = JSON.stringify(values || {})
+      const b64 = btoa(json).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
+      return `/auctions/preview?type=${type}&state=${b64}`
+    } catch {
+      return '#'
+    }
+  }, [type, values])
+  return (
+    <a href={href} className={`inline-flex items-center gap-2 text-sm text-blue-600 underline underline-offset-4 hover:opacity-80 dark:text-blue-400 ${className || ''}`}>
+      Preview summary →
+    </a>
+  )
+}
+
 
 function StepNav({ submitLabel = 'Next' }: { submitLabel?: string }) {
   const { back, next, isFirst, isLast } = useFormWizard()
@@ -415,6 +437,20 @@ function FormAutosave({ onValuesChange }: { onValuesChange: (v: any) => void }) 
     const sub = form.watch((v: any) => onValuesChange(v))
     return () => sub.unsubscribe()
   }, [form, onValuesChange])
+  return null
+}
+
+function FormStepRouter() {
+  const { goTo, stepsCount } = useFormWizard()
+  React.useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search)
+      const step = Number(params.get('step'))
+      if (Number.isFinite(step)) {
+        goTo(Math.min(Math.max(step, 0), stepsCount - 1))
+      }
+    } catch {}
+  }, [goTo, stepsCount])
   return null
 }
 
