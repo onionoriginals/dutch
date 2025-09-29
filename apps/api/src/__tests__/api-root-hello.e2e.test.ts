@@ -10,10 +10,10 @@ beforeAll(() => {
 })
 
 describe('API health and hello', () => {
-  test('GET / returns ok and version; network override works', async () => {
-    const res = await app.handle(new Request('http://localhost/?network=regtest'))
+  test('GET /health returns ok and version; network override works', async () => {
+    const res = await app.handle(new Request('http://localhost/health?network=regtest'))
     expect(res.status).toBe(200)
-    const json = await res.json()
+    const json: any = await res.json()
     expect(json.ok).toBe(true)
     expect(json.version).toBeDefined()
     expect(json.network).toBe('regtest')
@@ -22,7 +22,7 @@ describe('API health and hello', () => {
   test('GET /hello returns greeting', async () => {
     const res = await app.handle(new Request('http://localhost/hello'))
     expect(res.status).toBe(200)
-    const json = await res.json()
+    const json: any = await res.json()
     expect(typeof json.message).toBe('string')
     expect(json.message.length).toBeGreaterThan(0)
   })
