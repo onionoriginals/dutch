@@ -94,6 +94,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
     .use(cors({
       origin: (request) => {
         const origin = request.headers.get('origin') || request.headers.get('Origin')
+        console.log('origin', origin)
         if (!origin) return true
         return isOriginAllowed(origin)
       },
