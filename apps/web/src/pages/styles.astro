@@ -1,0 +1,103 @@
+---
+import '../styles/globals.css'
+---
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Design System</title>
+  </head>
+  <body class="p-6 space-y-10">
+    <header class="flex items-center justify-between">
+      <h1 class="text-3xl font-bold tracking-tight">Design System</h1>
+      <button id="theme-toggle" class="btn-ghost">Toggle theme</button>
+    </header>
+
+    <section>
+      <h2 class="text-xl font-semibold mb-4">Colors</h2>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="card"><div class="card-content space-y-2">
+          <div class="h-12 w-full rounded" style="background-color: hsl(var(--background))"></div>
+          <div class="text-sm">background</div>
+        </div></div>
+        <div class="card"><div class="card-content space-y-2">
+          <div class="h-12 w-full rounded" style="background-color: hsl(var(--foreground))"></div>
+          <div class="text-sm">foreground</div>
+        </div></div>
+        <div class="card"><div class="card-content space-y-2">
+          <div class="h-12 w-full rounded" style="background-color: hsl(var(--primary))"></div>
+          <div class="text-sm">primary</div>
+        </div></div>
+        <div class="card"><div class="card-content space-y-2">
+          <div class="h-12 w-full rounded" style="background-color: hsl(var(--secondary))"></div>
+          <div class="text-sm">secondary</div>
+        </div></div>
+        <div class="card"><div class="card-content space-y-2">
+          <div class="h-12 w-full rounded" style="background-color: hsl(var(--accent))"></div>
+          <div class="text-sm">accent</div>
+        </div></div>
+        <div class="card"><div class="card-content space-y-2">
+          <div class="h-12 w-full rounded" style="background-color: hsl(var(--muted))"></div>
+          <div class="text-sm">muted</div>
+        </div></div>
+        <div class="card"><div class="card-content space-y-2">
+          <div class="h-12 w-full rounded" style="background-color: hsl(var(--destructive))"></div>
+          <div class="text-sm">destructive</div>
+        </div></div>
+      </div>
+    </section>
+
+    <section class="space-y-4">
+      <h2 class="text-xl font-semibold">Typography</h2>
+      <div class="card"><div class="card-content space-y-2">
+        <h1 class="text-4xl font-bold tracking-tight">Heading 1</h1>
+        <h2 class="text-3xl font-semibold tracking-tight">Heading 2</h2>
+        <h3 class="text-2xl font-semibold tracking-tight">Heading 3</h3>
+        <p class="text-base leading-7 text-foreground">Body text paragraph with default leading. <a class="underline" href="#">Link</a>.</p>
+        <p class="text-sm text-muted-foreground">Muted small text</p>
+      </div></div>
+    </section>
+
+    <section class="space-y-4">
+      <h2 class="text-xl font-semibold">Surfaces & Shadows</h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="card shadow-xs"><div class="card-content">Shadow xs</div></div>
+        <div class="card shadow-sm"><div class="card-content">Shadow sm</div></div>
+        <div class="card shadow-md"><div class="card-content">Shadow md</div></div>
+        <div class="card shadow-lg"><div class="card-content">Shadow lg</div></div>
+        <div class="card shadow-xl"><div class="card-content">Shadow xl</div></div>
+      </div>
+    </section>
+
+    <section class="space-y-4">
+      <h2 class="text-xl font-semibold">Primitives</h2>
+      <div class="card"><div class="card-content space-y-4">
+        <div class="flex gap-3 flex-wrap">
+          <button class="btn-primary">Button Primary</button>
+          <button class="btn-secondary">Button Secondary</button>
+          <button class="btn-ghost">Button Ghost</button>
+        </div>
+        <div class="flex gap-3 items-center">
+          <input class="input" placeholder="Input" />
+          <select class="select">
+            <option>Option A</option>
+            <option>Option B</option>
+          </select>
+        </div>
+        <div class="flex gap-3 items-center">
+          <span class="badge badge-default">Badge</span>
+          <span class="badge badge-destructive">Badge Destructive</span>
+        </div>
+        <div class="skeleton h-6 w-48" data-animated="true"></div>
+      </div></div>
+    </section>
+
+    <script type="module">
+      const toggle = document.getElementById('theme-toggle');
+      toggle?.addEventListener('click', () => {
+        document.documentElement.classList.toggle('dark');
+      });
+    </script>
+  </body>
+  </html>
+

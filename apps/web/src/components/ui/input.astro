@@ -1,0 +1,12 @@
+---
+interface Props {
+  type?: string;
+  value?: string;
+  placeholder?: string;
+  disabled?: boolean;
+}
+
+const { type = 'text', value, placeholder, disabled = false, ...attrs } = Astro.props as Props & Record<string, any>;
+---
+<input class="input" type={type} value={value} placeholder={placeholder} disabled={disabled} {...attrs} />
+

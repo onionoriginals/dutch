@@ -1,0 +1,21 @@
+---
+interface Props {
+  variant?: 'primary' | 'secondary' | 'ghost' | 'link';
+  disabled?: boolean;
+}
+
+const { variant = 'primary', disabled = false, ...attrs } = Astro.props as Props & Record<string, any>;
+
+const base = 'btn';
+const variants: Record<string, string> = {
+  primary: 'btn-primary',
+  secondary: 'btn-secondary',
+  ghost: 'btn-ghost',
+  link: 'underline underline-offset-4 hover:opacity-80 disabled:opacity-50'
+};
+const klass = `${base} ${variants[variant] ?? variants.primary}`;
+---
+<button class={klass} disabled={disabled} {...attrs}>
+  <slot />
+</button>
+

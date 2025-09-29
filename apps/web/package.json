@@ -10,5 +10,18 @@
   "dependencies": {
     "astro": "^4.15.3",
     "@originals/dutch": "file:../../packages/dutch"
+  },
+  "devDependencies": {
+    "@astrojs/tailwind": "^5",
+    "@tailwindcss/container-queries": "^0.1.1",
+    "@tailwindcss/forms": "^0.5.10",
+    "@tailwindcss/typography": "^0.5.19",
+    "autoprefixer": "^10.4.21",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "postcss": "^8.5.6",
+    "tailwind-merge": "^3.3.1",
+    "tailwindcss": "^3.4.14",
+    "tailwindcss-animate": "^1.0.7"
   }
 }

@@ -1,6 +1,7 @@
 ---
 import { helloDutch } from '@originals/dutch/browser';
 const msg = helloDutch('Astronaut');
+import '../styles/globals.css';
 ---
 <html>
   <head>
@@ -9,9 +10,25 @@ const msg = helloDutch('Astronaut');
     <title>Originals Web</title>
   </head>
   <body>
-    <main>
-      <h1>{msg}</h1>
-      <p>API at <a href="http://localhost:3000/hello">/hello</a></p>
+    <main class="p-8 space-y-6">
+      <h1 class="text-3xl font-bold tracking-tight">{msg}</h1>
+      <p><a class="underline" href="/styles">Design System</a></p>
+      <div class="card">
+        <div class="card-content space-y-4">
+          <p>API at <a class="underline" href="http://localhost:3000/hello">/hello</a></p>
+          <div class="flex gap-3">
+            <button class="btn-primary">Primary</button>
+            <button class="btn-secondary">Secondary</button>
+            <button class="btn-ghost">Ghost</button>
+          </div>
+          <input class="input" placeholder="Input" />
+          <div>
+            <span class="badge badge-default">Badge</span>
+            <span class="badge badge-destructive ml-2">Destructive</span>
+          </div>
+          <div class="skeleton h-6 w-48" data-animated="true"></div>
+        </div>
+      </div>
     </main>
   </body>
   </html>
