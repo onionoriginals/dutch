@@ -57,11 +57,11 @@ async function readJson(request: Request) {
 }
 
 // Utility for network override (from the "HEAD" branch)
-function withNetworkOverride<T>(networkParam: string | undefined, handler: () => T): T {
+async function withNetworkOverride<T>(networkParam: string | undefined, handler: () => T | Promise<T>): Promise<T> {
   const original = (globalThis as any).process?.env?.BITCOIN_NETWORK
   if (networkParam) (globalThis as any).process.env.BITCOIN_NETWORK = String(networkParam)
   try {
-    return handler()
+    return await handler()
   } finally {
     if (networkParam) (globalThis as any).process.env.BITCOIN_NETWORK = original
   }
@@ -117,9 +117,9 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
       }
     })
     .get('/hello', () => ({ message: helloDutch('World') }))
-    .get('/health', ({ query }) =>
-      withNetworkOverride(query?.network as any, () => {
-        const auctions = database.listAuctions()
+    .get('/health', async ({ query }) =>
+      await withNetworkOverride(query?.network as any, async () => {
+        const auctions = await (database as any).listAuctions()
         const active = auctions.filter((a: any) => a.status === 'active').length
         const sold = auctions.filter((a: any) => a.status === 'sold').length
         const expired = auctions.filter((a: any) => a.status === 'expired').length
@@ -137,17 +137,17 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
     // Listings
     .get(
       '/auctions',
-      ({ query }) =>
-        withNetworkOverride(query?.network as any, () => {
+      async ({ query }) =>
+        await withNetworkOverride(query?.network as any, async () => {
           const now = Math.floor(Date.now() / 1000)
-          const list = database.listAuctions({
+          const list = await (database as any).listAuctions({
             status: (query.status as any) || undefined,
             type: (query.type as any) || undefined,
           })
           const enriched = list.map((a: any) => {
             if (a.auction_type === 'single') {
-              const linear = database.calculateCurrentPrice(a, now)
-              const stepped = database.calculatePriceWithIntervals(a, now)
+              const linear = (database as any).calculateCurrentPrice(a, now)
+              const stepped = (database as any).calculatePriceWithIntervals(a, now)
               return {
                 ...a,
                 pricing: {
@@ -172,17 +172,17 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
     // Duplicate under /api for web client
     .get(
       '/api/auctions',
-      ({ query }) =>
-        withNetworkOverride(query?.network as any, () => {
+      async ({ query }) =>
+        await withNetworkOverride(query?.network as any, async () => {
           const now = Math.floor(Date.now() / 1000)
-          const list = database.listAuctions({
+          const list = await (database as any).listAuctions({
             status: (query.status as any) || undefined,
             type: (query.type as any) || undefined,
           })
           const enriched = list.map((a: any) => {
             if (a.auction_type === 'single') {
-              const linear = database.calculateCurrentPrice(a, now)
-              const stepped = database.calculatePriceWithIntervals(a, now)
+              const linear = (database as any).calculateCurrentPrice(a, now)
+              const stepped = (database as any).calculatePriceWithIntervals(a, now)
               return {
                 ...a,
                 pricing: {
@@ -205,17 +205,17 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
       },
     )
     // Auction details
-    .get('/auction/:auctionId', ({ params, query }) =>
-      withNetworkOverride(query?.network as any, () => {
+    .get('/auction/:auctionId', async ({ params, query }) =>
+      await withNetworkOverride(query?.network as any, async () => {
         const now = Math.floor(Date.now() / 1000)
-        const a = database.getAuction(params.auctionId)
+        const a = await (database as any).getAuction(params.auctionId)
         if (a) {
           if (a.status === 'active' && a.end_time <= now) {
-            database.updateAuctionStatus(a.id, 'expired')
+            await (database as any).updateAuctionStatus(a.id, 'expired')
             a.status = 'expired'
           }
-          const linear = database.calculateCurrentPrice(a, now)
-          const stepped = database.calculatePriceWithIntervals(a, now)
+          const linear = (database as any).calculateCurrentPrice(a, now)
+          const stepped = (database as any).calculatePriceWithIntervals(a, now)
           return {
             ok: true,
             network: getBitcoinNetwork(),
@@ -225,7 +225,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         }
         // Try clearing auction status
         try {
-          const s = database.getClearingAuctionStatus(params.auctionId)
+          const s = (database as any).getClearingAuctionStatus(params.auctionId)
           return { ok: true, network: getBitcoinNetwork(), auction: { ...s.auction, auction_type: 'clearing' as const }, pricing: null }
         } catch {
           return { ok: false, error: 'Auction not found' }
@@ -237,49 +237,49 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
       },
     )
     // Pricing endpoints
-    .get('/price/:auctionId', ({ params, query }) =>
-      withNetworkOverride(query?.network as any, () => {
+    .get('/price/:auctionId', async ({ params, query }) =>
+      await withNetworkOverride(query?.network as any, async () => {
         const now = Math.floor(Date.now() / 1000)
-        const a = database.getAuction(params.auctionId)
+        const a = await (database as any).getAuction(params.auctionId)
         if (!a) return { ok: false, error: 'Auction not found' }
         if (a.status === 'active' && a.end_time <= now) {
-          database.updateAuctionStatus(a.id, 'expired')
+          await (database as any).updateAuctionStatus(a.id, 'expired')
           a.status = 'expired'
         }
-        const linear = database.calculateCurrentPrice(a, now)
+        const linear = (database as any).calculateCurrentPrice(a, now)
         return { ok: true, network: getBitcoinNetwork(), auctionId: a.id, price: linear.currentPrice, status: linear.auctionStatus, at: now }
       }),
       { params: t.Object({ auctionId: t.String() }), query: t.Object({ network: t.Optional(t.String()) }) },
     )
-    .get('/price/:auctionId/stepped', ({ params, query }) =>
-      withNetworkOverride(query?.network as any, () => {
+    .get('/price/:auctionId/stepped', async ({ params, query }) =>
+      await withNetworkOverride(query?.network as any, async () => {
         const now = Math.floor(Date.now() / 1000)
-        const a = database.getAuction(params.auctionId)
+        const a = await (database as any).getAuction(params.auctionId)
         if (!a) return { ok: false, error: 'Auction not found' }
         if (a.status === 'active' && a.end_time <= now) {
-          database.updateAuctionStatus(a.id, 'expired')
+          await (database as any).updateAuctionStatus(a.id, 'expired')
           a.status = 'expired'
         }
-        const stepped = database.calculatePriceWithIntervals(a, now)
+        const stepped = (database as any).calculatePriceWithIntervals(a, now)
         return { ok: true, network: getBitcoinNetwork(), auctionId: a.id, price: stepped.currentPrice, status: a.status, at: now }
       }),
       { params: t.Object({ auctionId: t.String() }), query: t.Object({ network: t.Optional(t.String()) }) },
     )
     // Admin endpoints
-    .post('/admin/check-expired', ({ query }) =>
-      withNetworkOverride(query?.network as any, () => {
-        const result = database.checkAndUpdateExpiredAuctions()
+    .post('/admin/check-expired', async ({ query }) =>
+      await withNetworkOverride(query?.network as any, async () => {
+        const result = await (database as any).checkAndUpdateExpiredAuctions()
         return { ok: true, ...result, network: getBitcoinNetwork() }
       }),
       { query: t.Object({ network: t.Optional(t.String()) }) },
     )
-    .post('/auction/:auctionId/status', ({ params, body, query }) =>
-      withNetworkOverride(query?.network as any, () => {
+    .post('/auction/:auctionId/status', async ({ params, body, query }) =>
+      await withNetworkOverride(query?.network as any, async () => {
         const allowed = ['active', 'sold', 'expired']
         if (!allowed.includes((body as any).status)) {
           return { ok: false, error: 'Invalid status' }
         }
-        const res = database.updateAuctionStatus(params.auctionId, (body as any).status)
+        const res = await (database as any).updateAuctionStatus(params.auctionId, (body as any).status)
         if (!('success' in res) || !res.success) return { ok: false, error: 'Auction not found' }
         return { ok: true, auctionId: params.auctionId, newStatus: (body as any).status }
       }),
@@ -318,7 +318,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
           decrement_interval: Number(decrementInterval ?? 60),
           seller_address: String(sellerAddress),
         }
-        const res = database.createClearingPriceAuction(input)
+        const res = (database as any).createClearingPriceAuction(input)
         return res
       } catch (err: any) {
         set.status = 500
@@ -344,7 +344,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
           set.status = 400
           return { error: 'auctionId and bidderAddress required' }
         }
-        const res = database.placeBid(String(auctionId), String(bidderAddress), Number(quantity ?? 1))
+        const res = (database as any).placeBid(String(auctionId), String(bidderAddress), Number(quantity ?? 1))
         return res
       } catch (err: any) {
         set.status = 500
@@ -360,7 +360,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
     })
     .get('/clearing/status/:auctionId', ({ params, set }) => {
       try {
-        return database.getClearingAuctionStatus(String(params.auctionId))
+        return (database as any).getClearingAuctionStatus(String(params.auctionId))
       } catch (err: any) {
         set.status = 404
         return { error: err?.message || 'not_found' }
@@ -368,7 +368,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
     })
     .get('/clearing/bids/:auctionId', ({ params, set }) => {
       try {
-        return database.getAuctionBids(String(params.auctionId))
+        return (database as any).getAuctionBids(String(params.auctionId))
       } catch (err: any) {
         set.status = 404
         return { error: err?.message || 'not_found' }
@@ -376,7 +376,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
     })
     .get('/clearing/settlement/:auctionId', ({ params, set }) => {
       try {
-        return database.calculateSettlement(String(params.auctionId))
+        return (database as any).calculateSettlement(String(params.auctionId))
       } catch (err: any) {
         set.status = 404
         return { error: err?.message || 'not_found' }
@@ -389,7 +389,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
           set.status = 400
           return { error: 'auctionId and bidIds[] required' }
         }
-        return database.markBidsSettled(String(auctionId), bidIds.map(String))
+        return (database as any).markBidsSettled(String(auctionId), bidIds.map(String))
       } catch (err: any) {
         set.status = 500
         return { error: err?.message || 'internal_error' }
@@ -408,7 +408,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
           set.status = 400
           return { error: 'auctionId, bidderAddress, bidAmount required' }
         }
-        return database.createBidPaymentPSBT(String(auctionId), String(bidderAddress), Number(bidAmount), Number(quantity ?? 1))
+        return (database as any).createBidPaymentPSBT(String(auctionId), String(bidderAddress), Number(bidAmount), Number(quantity ?? 1))
       } catch (err: any) {
         set.status = 500
         return { error: err?.message || 'internal_error' }
@@ -429,7 +429,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
           set.status = 400
           return { error: 'bidId and transactionId required' }
         }
-        return database.confirmBidPayment(String(bidId), String(transactionId))
+        return (database as any).confirmBidPayment(String(bidId), String(transactionId))
       } catch (err: any) {
         set.status = 500
         return { error: err?.message || 'internal_error' }
@@ -448,7 +448,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
           set.status = 400
           return { error: 'auctionId required' }
         }
-        return database.processAuctionSettlement(String(auctionId))
+        return (database as any).processAuctionSettlement(String(auctionId))
       } catch (err: any) {
         set.status = 500
         return { error: err?.message || 'internal_error' }
@@ -461,7 +461,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
     })
     .get('/clearing/bid-payment-status/:bidId', ({ params, set }) => {
       try {
-        return database.getBidDetails(String(params.bidId))
+        return (database as any).getBidDetails(String(params.bidId))
       } catch (err: any) {
         set.status = 404
         return { error: err?.message || 'not_found' }
@@ -469,7 +469,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
     })
     .get('/clearing/auction-payments/:auctionId', ({ params, set }) => {
       try {
-        return database.getAuctionBidsWithPayments(String(params.auctionId))
+        return (database as any).getAuctionBidsWithPayments(String(params.auctionId))
       } catch (err: any) {
         set.status = 404
         return { error: err?.message || 'not_found' }
@@ -479,7 +479,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
     .post('/demo/create-clearing-auction', ({ body }) => {
       const id = String((body as any)?.auctionId ?? `demo_${Date.now()}`)
       const inscriptionIds = (body as any)?.inscriptionIds ?? ['insc-0', 'insc-1', 'insc-2']
-      return database.createClearingPriceAuction({
+      return (database as any).createClearingPriceAuction({
         id,
         inscription_id: String(inscriptionIds[0]),
         inscription_ids: inscriptionIds.map(String),
