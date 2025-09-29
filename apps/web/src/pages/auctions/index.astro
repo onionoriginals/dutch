@@ -1,0 +1,50 @@
+---
+import '../../styles/globals.css'
+import Filters from '../../components/auctions/Filters'
+import List from '../../components/auctions/List'
+import { queryAuctions, parseQueryFromSearch, getDefaultPageSize } from '../../lib/auctions/mockAdapter'
+
+const search = Astro.url.searchParams
+const q = parseQueryFromSearch(search)
+
+// SSR initial data for fast first paint
+const initial = await queryAuctions({ ...q, page: q.page ?? 1, pageSize: q.pageSize ?? getDefaultPageSize() })
+---
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Auctions - Originals</title>
+  </head>
+  <body>
+    <main class="min-h-screen bg-gray-50 p-4 dark:bg-gray-900">
+      <div class="mx-auto max-w-6xl space-y-6">
+        <header class="flex items-end justify-between gap-4">
+          <div>
+            <h1 class="text-2xl font-semibold">Auctions</h1>
+            <p class="text-sm text-muted-foreground">Browse drafts, scheduled, live, and ended auctions.</p>
+          </div>
+          <a href="/auctions/new" class="button">New auction</a>
+        </header>
+
+        <section aria-labelledby="filters-heading" class="rounded-lg border bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-800">
+          <h2 id="filters-heading" class="sr-only">Filters</h2>
+          <Filters client:only="react" initial={{
+            q: q.search,
+            type: q.type as any,
+            status: q.status as any,
+            startDate: q.startDate,
+            endDate: q.endDate,
+            sort: q.sort
+          }} />
+        </section>
+
+        <section aria-labelledby="results-heading">
+          <h2 id="results-heading" class="sr-only">Results</h2>
+          <List client:only="react" initial={initial} query={q} />
+        </section>
+      </div>
+    </main>
+  </body>
+</html>
+
