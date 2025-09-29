@@ -1,42 +1,40 @@
-import { describe, it, expect } from 'bun:test';
-import { computePriceAt, generateSchedulePoints, validateScheduleInput } from '../schedule';
+import { describe, it, expect } from 'bun:test'
+import { computeSchedule, priceAtTime } from '../schedule'
 
-describe('Dutch schedule math', () => {
+describe('schedule math', () => {
   it('validates inputs', () => {
-    const errs = validateScheduleInput({ startPrice: 10, floorPrice: 20, durationMs: 1000, intervalMs: 100, decay: 'linear' });
-    expect(errs.some(e => e.message.includes('greater than floor'))).toBe(true);
-    const errs2 = validateScheduleInput({ startPrice: 10, floorPrice: 1, durationMs: 0, intervalMs: 100, decay: 'linear' });
-    expect(errs2.some(e => e.field === 'durationMs')).toBe(true);
-    const errs3 = validateScheduleInput({ startPrice: 10, floorPrice: 1, durationMs: 1000, intervalMs: 60, decay: 'linear' });
-    expect(errs3.some(e => e.field === 'intervalMs')).toBe(true);
-  });
+    const bad = computeSchedule({ startPrice: 1, floorPrice: 2, durationSeconds: 60, intervalSeconds: 7, decayType: 'linear' })
+    expect(bad.errors.length).toBeGreaterThan(0)
+  })
 
-  it('computes linear prices', () => {
-    const input = { startPrice: 1000, floorPrice: 100, durationMs: 1000, intervalMs: 1000, decay: 'linear' } as const;
-    expect(computePriceAt(input, 0)).toBe(1000);
-    expect(computePriceAt(input, 500)).toBeCloseTo(550, 6);
-    expect(computePriceAt(input, 1000)).toBe(100);
-  });
+  it('linear schedule hits exact floor at end and steps correctly', () => {
+    const s = computeSchedule({ startPrice: 100, floorPrice: 10, durationSeconds: 100, intervalSeconds: 20, decayType: 'linear' })
+    expect(s.errors).toEqual([])
+    expect(s.points[0]!.price).toBe(100)
+    expect(s.points[s.points.length - 1]!.price).toBe(10)
+    // decrement per step: (100-10)/5 = 18
+    expect(s.points.map(p => p.price)).toEqual([100, 82, 64, 46, 28, 10])
+  })
 
-  it('computes exponential prices monotically decreasing and bounded', () => {
-    const input = { startPrice: 1000, floorPrice: 100, durationMs: 1000, intervalMs: 100, decay: 'exponential' } as const;
-    let prev = computePriceAt(input, 0);
-    for (let t = 100; t <= 1000; t += 100) {
-      const p = computePriceAt(input, t);
-      expect(p).toBeLessThan(prev);
-      prev = p;
+  it('exponential schedule starts at start and ends at floor', () => {
+    const s = computeSchedule({ startPrice: 1000, floorPrice: 100, durationSeconds: 60, intervalSeconds: 10, decayType: 'exponential' })
+    expect(s.errors).toEqual([])
+    expect(s.points[0]!.price).toBeCloseTo(1000, 10)
+    expect(s.points[s.points.length - 1]!.price).toBe(100)
+    // monotonic decreasing
+    for (let i = 1; i < s.points.length; i++) {
+      expect(s.points[i]!.price).toBeLessThanOrEqual(s.points[i - 1]!.price)
     }
-    const last = computePriceAt(input, 1000);
-    expect(last).toBeGreaterThanOrEqual(100);
-    expect(last).toBeLessThan(1000);
-  });
+  })
 
-  it('generates stepped points inclusive of duration', () => {
-    const input = { startPrice: 1000, floorPrice: 100, durationMs: 600, intervalMs: 200, decay: 'linear' } as const;
-    const pts = generateSchedulePoints(input);
-    expect(pts.map(p => p.tMs)).toEqual([0, 200, 400, 600]);
-    expect(pts[0].price).toBe(1000);
-    expect(pts[pts.length - 1].price).toBe(100);
-  });
-});
+  it('priceAtTime matches linear closed form', () => {
+    const input = { startPrice: 200, floorPrice: 20, durationSeconds: 180, intervalSeconds: 30, decayType: 'linear' as const }
+    const p0 = priceAtTime(input, 0)!
+    const pHalf = priceAtTime(input, 90)!
+    const pEnd = priceAtTime(input, 180)!
+    expect(p0).toBe(200)
+    expect(pHalf).toBeCloseTo(110, 10)
+    expect(pEnd).toBe(20)
+  })
+})
 

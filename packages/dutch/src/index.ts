@@ -5,6 +5,8 @@ export function helloDutch(name: string): string {
 export const version = '0.1.0'
 
 import { SecureDutchyDatabase as SecureDutchyDatabaseType } from './database'
+export { computeSchedule, priceAtTime } from './schedule'
+export type { DecayType, ScheduleInput, NormalizedSchedule, SchedulePoint } from './schedule'
 
 // Simple singleton database for API/runtime usage
 let _db: SecureDutchyDatabaseType | null = null

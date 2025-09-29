@@ -1,0 +1,51 @@
+---
+import React from 'react'
+import DutchPriceScheduleEditor from '../../components/auction/DutchPriceScheduleEditor'
+---
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DutchPriceScheduleEditor Usage</title>
+  </head>
+  <body>
+    <main style="padding: 24px; max-width: 820px; margin: 0 auto;">
+      <h1 style="font-size: 1.5rem; font-weight: 700;">DutchPriceScheduleEditor</h1>
+      <p>A controlled editor with live SVG sparkline preview. Emits a normalized schedule with <code>points</code> and <code>errors</code>.</p>
+      <div client:load>
+        <Demo />
+      </div>
+      <h2 style="margin-top:16px; font-weight:600;">Validation</h2>
+      <ul>
+        <li>startPrice &gt; floorPrice</li>
+        <li>durationSeconds &gt; 0</li>
+        <li>intervalSeconds &gt; 0 and divides duration</li>
+      </ul>
+    </main>
+  </body>
+</html>
+
+{
+  (() => {
+    function Demo() {
+      const [out, setOut] = React.useState<any>(null)
+      return (
+        <div>
+          <DutchPriceScheduleEditor
+            startPrice={500}
+            floorPrice={50}
+            durationSeconds={300}
+            intervalSeconds={60}
+            decayType={'exponential'}
+            onChange={setOut}
+          />
+          <pre style="margin-top:8px;background:#111827;color:#e5e7eb;padding:8px;border-radius:6px;overflow:auto;max-height:160px;">
+{JSON.stringify(out?.points?.slice(0,4), null, 2)}
+          </pre>
+        </div>
+      )
+    }
+    return { Demo }
+  })()
+}
+

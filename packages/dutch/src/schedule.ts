@@ -1,97 +1,100 @@
-export type DecayType = 'linear' | 'exponential';
+export type DecayType = 'linear' | 'exponential'
 
 export interface ScheduleInput {
-  startPrice: number; // inclusive at t=0
-  floorPrice: number; // inclusive at t=duration
-  durationMs: number; // total duration in milliseconds
-  intervalMs: number; // step size in milliseconds (must divide duration)
-  decay: DecayType;
+  startPrice: number
+  floorPrice: number
+  durationSeconds: number
+  intervalSeconds: number
+  decayType: DecayType
 }
 
 export interface SchedulePoint {
-  tMs: number; // from 0..durationMs
-  price: number; // normalized number (no rounding here)
+  t: number // seconds from start, integer
+  price: number
 }
 
 export interface NormalizedSchedule {
-  points: SchedulePoint[];
-  getPriceAt: (tMs: number) => number;
+  input: ScheduleInput
+  points: SchedulePoint[]
+  errors: string[]
 }
 
-export interface ValidationError {
-  field: keyof ScheduleInput;
-  message: string;
+function validateInput(input: ScheduleInput): string[] {
+  const errors: string[] = []
+  if (!Number.isFinite(input.startPrice) || input.startPrice <= 0) {
+    errors.push('Start price must be a positive number')
+  }
+  if (!Number.isFinite(input.floorPrice) || input.floorPrice < 0) {
+    errors.push('Floor price must be a non-negative number')
+  }
+  if (input.startPrice <= input.floorPrice) {
+    errors.push('Start price must be greater than floor price')
+  }
+  if (!Number.isFinite(input.durationSeconds) || input.durationSeconds <= 0) {
+    errors.push('Duration must be greater than 0')
+  }
+  if (!Number.isFinite(input.intervalSeconds) || input.intervalSeconds <= 0) {
+    errors.push('Interval must be greater than 0')
+  }
+  if (input.durationSeconds % input.intervalSeconds !== 0) {
+    errors.push('Interval must divide duration exactly')
+  }
+  if (input.decayType !== 'linear' && input.decayType !== 'exponential') {
+    errors.push('Decay type must be linear or exponential')
+  }
+  return errors
 }
 
-export function validateScheduleInput(input: ScheduleInput): ValidationError[] {
-  const errors: ValidationError[] = [];
-  const { startPrice, floorPrice, durationMs, intervalMs } = input;
-  if (!Number.isFinite(startPrice) || startPrice <= 0) {
-    errors.push({ field: 'startPrice', message: 'Start price must be a positive number' });
+export function computeSchedule(input: ScheduleInput): NormalizedSchedule {
+  const errors = validateInput(input)
+  const points: SchedulePoint[] = []
+
+  const stepCount = Math.round(input.durationSeconds / input.intervalSeconds)
+  if (errors.length === 0) {
+    const start = input.startPrice
+    const floor = input.floorPrice
+    const totalSteps = stepCount
+
+    if (input.decayType === 'linear') {
+      const decrementPerStep = (start - floor) / totalSteps
+      for (let i = 0; i <= totalSteps; i++) {
+        const t = i * input.intervalSeconds
+        const price = Math.max(floor, start - decrementPerStep * i)
+        points.push({ t, price })
+      }
+    } else {
+      // exponential decay towards floor: p(t) = floor + (start-floor)*exp(-k*t)
+      // solve k so that p(duration) == floor (+ epsilon)
+      // We want near floor at end; choose target factor f ~ 0.01
+      const remainingFraction = 0.01
+      const k = -Math.log(remainingFraction) / input.durationSeconds
+      for (let i = 0; i <= totalSteps; i++) {
+        const t = i * input.intervalSeconds
+        const price = floor + (start - floor) * Math.exp(-k * t)
+        points.push({ t, price })
+      }
+      // ensure last point equals exact floor
+      const lastIndex = points.length - 1
+      if (lastIndex >= 0) points[lastIndex] = { t: input.durationSeconds, price: floor }
+    }
   }
-  if (!Number.isFinite(floorPrice) || floorPrice < 0) {
-    errors.push({ field: 'floorPrice', message: 'Floor price must be a non-negative number' });
-  }
-  if (Number.isFinite(startPrice) && Number.isFinite(floorPrice) && startPrice <= floorPrice) {
-    errors.push({ field: 'startPrice', message: 'Start price must be greater than floor price' });
-  }
-  if (!Number.isFinite(durationMs) || durationMs <= 0) {
-    errors.push({ field: 'durationMs', message: 'Duration must be greater than 0' });
-  }
-  if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
-    errors.push({ field: 'intervalMs', message: 'Interval must be greater than 0' });
-  }
-  if (Number.isFinite(durationMs) && Number.isFinite(intervalMs) && durationMs % intervalMs !== 0) {
-    errors.push({ field: 'intervalMs', message: 'Interval must evenly divide duration' });
-  }
-  return errors;
+
+  return { input, points, errors }
 }
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(Math.max(value, min), max);
-}
+export function priceAtTime(input: ScheduleInput, secondsFromStart: number): number | null {
+  const { errors } = computeSchedule(input)
+  if (errors.length > 0) return null
+  if (secondsFromStart <= 0) return input.startPrice
+  if (secondsFromStart >= input.durationSeconds) return input.floorPrice
 
-export function computePriceAt(input: ScheduleInput, tMs: number): number {
-  const errors = validateScheduleInput(input);
-  if (errors.length) throw new Error(errors[0].message);
-  const { startPrice, floorPrice, durationMs, decay } = input;
-  const clamped = clamp(tMs, 0, durationMs);
-  if (clamped === 0) return startPrice;
-  if (clamped === durationMs) return floorPrice;
-  const progress = clamped / durationMs; // 0..1
-  const delta = startPrice - floorPrice;
-  if (decay === 'linear') {
-    return startPrice - delta * progress;
+  if (input.decayType === 'linear') {
+    const slope = (input.floorPrice - input.startPrice) / input.durationSeconds
+    return input.startPrice + slope * secondsFromStart
   }
-  // exponential: price(t) = floor + (start - floor) * exp(-k * progress), choose k so end hits floor
-  // We want price(1) = floor approximately; choose k large so it nearly reaches floor.
-  // Alternatively define by half-life so price decays smoothly to floor and clamp end to floor.
-  const k = 5; // aggressiveness of exponential decay (higher -> faster drop)
-  const price = floorPrice + delta * Math.exp(-k * progress);
-  return price;
-}
 
-export function generateSchedulePoints(input: ScheduleInput): SchedulePoint[] {
-  const errors = validateScheduleInput(input);
-  if (errors.length) throw new Error(errors[0].message);
-  const { durationMs, intervalMs } = input;
-  const points: SchedulePoint[] = [];
-  for (let t = 0; t <= durationMs; t += intervalMs) {
-    const price = computePriceAt(input, t);
-    points.push({ tMs: t, price });
-  }
-  // ensure last point at exact duration
-  if (points[points.length - 1]?.tMs !== durationMs) {
-    points.push({ tMs: durationMs, price: computePriceAt(input, durationMs) });
-  }
-  return points;
-}
-
-export function normalizeSchedule(input: ScheduleInput): NormalizedSchedule {
-  const points = generateSchedulePoints(input);
-  return {
-    points,
-    getPriceAt: (tMs: number) => computePriceAt(input, tMs)
-  };
+  const remainingFraction = 0.01
+  const k = -Math.log(remainingFraction) / input.durationSeconds
+  return input.floorPrice + (input.startPrice - input.floorPrice) * Math.exp(-k * secondsFromStart)
 }
 
