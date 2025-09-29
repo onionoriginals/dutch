@@ -9,7 +9,7 @@ export function Input({ type = 'text', ...rest }: InputProps) {
   const { name, inputId, errorId } = useFieldContext()
   const hasError = Boolean((formState.errors as any)[name])
   return (
-    <input
+    <input className="input"
       id={inputId}
       type={type}
       aria-invalid={hasError || undefined}
