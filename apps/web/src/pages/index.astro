@@ -1,7 +1,15 @@
 ---
 import { helloDutch } from '@originals/dutch/browser';
+import DemoDutchEditor from '../components/auction/DemoDutchEditor';
 const msg = helloDutch('Astronaut');
 import '../styles/globals.css';
+const initial = {
+  startPrice: 1000,
+  floorPrice: 100,
+  durationMs: 60_000,
+  intervalMs: 5_000,
+  decay: 'linear' as const,
+};
 ---
 <html>
   <head>
@@ -10,24 +18,11 @@ import '../styles/globals.css';
     <title>Originals Web</title>
   </head>
   <body>
-    <main class="p-8 space-y-6">
-      <h1 class="text-3xl font-bold tracking-tight">{msg}</h1>
-      <p><a class="underline" href="/styles">Design System</a></p>
-      <div class="card">
-        <div class="card-content space-y-4">
-          <p>API at <a class="underline" href="http://localhost:3000/hello">/hello</a></p>
-          <div class="flex gap-3">
-            <button class="btn-primary">Primary</button>
-            <button class="btn-secondary">Secondary</button>
-            <button class="btn-ghost">Ghost</button>
-          </div>
-          <input class="input" placeholder="Input" />
-          <div>
-            <span class="badge badge-default">Badge</span>
-            <span class="badge badge-destructive ml-2">Destructive</span>
-          </div>
-          <div class="skeleton h-6 w-48" data-animated="true"></div>
-        </div>
+    <main>
+      <h1>{msg}</h1>
+      <p>API at <a href="http://localhost:3000/hello">/hello</a></p>
+      <div style="margin-top: 24px;">
+        <DemoDutchEditor client:load />
       </div>
     </main>
   </body>

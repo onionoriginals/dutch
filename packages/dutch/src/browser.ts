@@ -5,3 +5,5 @@ export function helloDutch(name: string): string {
 export const version = '0.1.0'
 
 // Browser build intentionally omits database exports to avoid bun:sqlite
+export type { DecayType } from './schedule'
+export { computePriceAt, generateSchedulePoints, normalizeSchedule, validateScheduleInput } from './schedule'

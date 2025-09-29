@@ -17,7 +17,11 @@ export default defineConfig({
   vite: {
     resolve: {
       // Prefer the "browser" export condition so @originals/dutch resolves to its browser build
-      conditions: ['browser']
+      conditions: ['browser'],
+      alias: [
+        { find: '@originals/dutch/browser', replacement: new URL('../../packages/dutch/src/browser.ts', import.meta.url).pathname },
+        { find: '@originals/dutch', replacement: new URL('../../packages/dutch/src/index.ts', import.meta.url).pathname },
+      ]
     },
     build: {
       rollupOptions: {
