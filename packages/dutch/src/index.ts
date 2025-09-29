@@ -17,3 +17,5 @@ export const db = getDb()
 
 // Re-exports for API consumers
 export { SecureDutchyDatabase, getBitcoinNetwork } from './database'
+export { computePriceAt, generateSchedulePoints, normalizeSchedule, validateScheduleInput } from './schedule'
+export type { DecayType, NormalizedSchedule } from './schedule'
