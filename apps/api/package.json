@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "bun --watch src/index.ts",
-    "build": "bun build src/index.ts --outdir dist --target bun -e tiny-secp256k1",
+    "build": "bun build src/index.ts tiny-secp256k1 --outdir dist --target bun",
     "start": "bun dist/index.js",
     "test": "bun test"
   },
