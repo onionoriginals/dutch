@@ -1,7 +1,8 @@
 import React from 'react'
 import AuctionCard from '../auction/AuctionCard'
-import type { AuctionsQuery, AuctionsResult } from '../../lib/auctions/mockAdapter'
-import { queryAuctions } from '../../lib/auctions/mockAdapter'
+import AuctionListItem, { AuctionListItemSkeleton } from '../auction/AuctionListItem'
+import type { AuctionsQuery, AuctionsResult } from '../../lib/auctions/common'
+import { queryAuctions } from '../../lib/auctions/apiAdapter'
 
 type ListProps = {
   initial?: AuctionsResult
@@ -13,6 +14,7 @@ export default function List({ initial, query }: ListProps) {
   const [loading, setLoading] = React.useState(!initial)
   const [error, setError] = React.useState<string | null>(null)
   const [q, setQ] = React.useState<AuctionsQuery>(() => ({ ...query }))
+  const [view, setView] = React.useState<'grid' | 'list'>('list')
 
   React.useEffect(() => {
     setQ({ ...query })
@@ -51,22 +53,30 @@ export default function List({ initial, query }: ListProps) {
 
   if (loading && !data) {
     return (
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {Array.from({ length: 9 }).map((_, i) => (
-          <div key={i} className="card">
-            <div className="card-content">
-              <div className="skeleton h-5 w-24" />
-              <div className="mt-3 space-y-2">
-                <div className="skeleton h-4 w-3/4" />
-                <div className="skeleton h-4 w-1/2" />
+      view === 'grid' ? (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 9 }).map((_, i) => (
+            <div key={i} className="card">
+              <div className="card-content">
+                <div className="skeleton h-5 w-24" />
+                <div className="mt-3 space-y-2">
+                  <div className="skeleton h-4 w-3/4" />
+                  <div className="skeleton h-4 w-1/2" />
+                </div>
+              </div>
+              <div slot="footer" className="p-3">
+                <div className="skeleton h-8 w-24" />
               </div>
             </div>
-            <div slot="footer" className="p-3">
-              <div className="skeleton h-8 w-24" />
-            </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {Array.from({ length: 9 }).map((_, i) => (
+            <AuctionListItemSkeleton key={i} />
+          ))}
+        </div>
+      )
     )
   }
 
@@ -89,13 +99,70 @@ export default function List({ initial, query }: ListProps) {
     )
   }
 
+  const activeItems = items.filter((a) => a.status !== 'ended')
+  const endedItems = items.filter((a) => a.status === 'ended')
+
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {items.map((a) => (
-          <AuctionCard key={a.id} {...a} />
-        ))}
+      <div className="flex items-center justify-end">
+        <div role="radiogroup" aria-label="View" className="inline-flex gap-1 rounded-md bg-muted p-1">
+          <button
+            type="button"
+            role="radio"
+            aria-checked={view === 'grid'}
+            className={`px-3 py-1.5 text-sm rounded ${view === 'grid' ? 'bg-white shadow' : ''}`}
+            onClick={() => setView('grid')}
+          >
+            Grid
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={view === 'list'}
+            className={`px-3 py-1.5 text-sm rounded ${view === 'list' ? 'bg-white shadow' : ''}`}
+            onClick={() => setView('list')}
+          >
+            List
+          </button>
+        </div>
       </div>
+
+      {/* Active (non-ended) */}
+      {activeItems.length > 0 && (
+        view === 'grid' ? (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {activeItems.map((a) => (
+              <AuctionCard key={a.id} {...a} />
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {activeItems.map((a) => (
+              <AuctionListItem key={a.id} {...a} />
+            ))}
+          </div>
+        )
+      )}
+
+      {/* Ended section */}
+      {endedItems.length > 0 && (
+        <div className="space-y-2">
+          <div className="mt-2 text-sm font-medium text-muted-foreground">Ended</div>
+          {view === 'grid' ? (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {endedItems.map((a) => (
+                <AuctionCard key={a.id} {...a} />
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {endedItems.map((a) => (
+                <AuctionListItem key={a.id} {...a} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <Pagination
         page={data!.page}

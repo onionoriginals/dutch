@@ -2,7 +2,8 @@
 import '../../styles/globals.css'
 import Filters from '../../components/auctions/Filters'
 import List from '../../components/auctions/List'
-import { queryAuctions, parseQueryFromSearch, getDefaultPageSize } from '../../lib/auctions/mockAdapter'
+import { parseQueryFromSearch, getDefaultPageSize } from '../../lib/auctions/common'
+import { queryAuctions } from '../../lib/auctions/apiAdapter'
 
 const search = Astro.url.searchParams
 const q = parseQueryFromSearch(search)

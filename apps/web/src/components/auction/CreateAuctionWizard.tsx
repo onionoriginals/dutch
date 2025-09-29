@@ -234,6 +234,7 @@ export default function CreateAuctionWizard() {
 
         {/* Timing */}
         <FormStep fields={steps[steps.length - 1]!}> 
+          <QuickTimingControls />
           <FormField name="startTime">
             <FieldLabel>Start time</FieldLabel>
             <DateTimePicker />
@@ -421,5 +422,114 @@ async function fakeSubmit(payload: unknown) {
   await new Promise((r) => setTimeout(r, 300))
   // eslint-disable-next-line no-console
   console.log('Normalized submit payload', payload)
+}
+
+function QuickTimingControls() {
+  const { form } = useFormWizard()
+  const startTime: string | undefined = form.watch('startTime')
+  const endTime: string | undefined = form.watch('endTime')
+
+  const nowMs = Date.now()
+  const oneDayMs = 24 * 60 * 60 * 1000
+  const presets = [
+    { key: '1h', label: '1 hour', ms: 1 * 60 * 60 * 1000 },
+    { key: '4h', label: '4 hours', ms: 4 * 60 * 60 * 1000 },
+    { key: '12h', label: '12 hours', ms: 12 * 60 * 60 * 1000 },
+    { key: '1d', label: '1 day', ms: oneDayMs },
+    { key: '3d', label: '3 days', ms: 3 * oneDayMs },
+    { key: '7d', label: '7 days', ms: 7 * oneDayMs },
+  ] as const
+
+  function getInitialDays(): number {
+    if (!startTime) return 0
+    const diff = new Date(startTime).getTime() - nowMs
+    return Math.max(0, Math.round(diff / oneDayMs))
+  }
+
+  function getInitialPreset(): string {
+    if (!startTime || !endTime) return '1d'
+    const dur = new Date(endTime).getTime() - new Date(startTime).getTime()
+    const match = presets.find((p) => Math.abs(p.ms - dur) < 60 * 1000)
+    return match?.key || '1d'
+  }
+
+  const [daysFromNow, setDaysFromNow] = React.useState<number>(getInitialDays())
+  const [presetKey, setPresetKey] = React.useState<string>(getInitialPreset())
+
+  React.useEffect(() => {
+    // If form fields change externally, keep local UI roughly in sync
+    setDaysFromNow(getInitialDays())
+    setPresetKey(getInitialPreset())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startTime, endTime])
+
+  function computeStartDate(days: number): Date {
+    const start = new Date(nowMs + days * oneDayMs)
+    // Snap to the next hour for neatness
+    start.setMinutes(0, 0, 0)
+    return start
+  }
+
+  function getPresetMs(key: string): number {
+    return presets.find((p) => p.key === key)?.ms || oneDayMs
+  }
+
+  function applyChanges(nextDays: number, nextPresetKey: string) {
+    const start = computeStartDate(nextDays)
+    const end = new Date(start.getTime() + getPresetMs(nextPresetKey))
+    form.setValue('startTime', start.toISOString(), { shouldDirty: true, shouldValidate: true })
+    form.setValue('endTime', end.toISOString(), { shouldDirty: true, shouldValidate: true })
+  }
+
+  return (
+    <div className="mb-4 rounded-lg border bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+      <div className="mb-3 text-sm font-medium text-gray-900 dark:text-gray-100">Quick timing</div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <label className="flex flex-col gap-1">
+          <span className="text-sm text-muted-foreground">Start in (days)</span>
+          <input
+            className="input"
+            type="number"
+            min={0}
+            max={365}
+            value={daysFromNow}
+            onChange={(e) => {
+              const val = Math.max(0, Math.min(365, Number(e.target.value || 0)))
+              setDaysFromNow(val)
+              applyChanges(val, presetKey)
+            }}
+          />
+        </label>
+
+        <label className="flex flex-col gap-1">
+          <span className="text-sm text-muted-foreground">Duration</span>
+          <select
+            className="input"
+            value={presetKey}
+            onChange={(e) => {
+              const key = e.target.value
+              setPresetKey(key)
+              applyChanges(daysFromNow, key)
+            }}
+          >
+            {presets.map((p) => (
+              <option key={p.key} value={p.key}>{p.label}</option>
+            ))}
+          </select>
+        </label>
+
+        <div className="flex items-end">
+          <button
+            type="button"
+            className="button"
+            onClick={() => applyChanges(daysFromNow, presetKey)}
+          >
+            Apply
+          </button>
+        </div>
+      </div>
+      <div className="mt-2 text-xs text-muted-foreground">You can still fine-tune exact times below.</div>
+    </div>
+  )
 }
 

@@ -1,34 +1,87 @@
 ---
-import { helloDutch } from '@originals/dutch/browser';
-import DemoDutchEditor from '../components/auction/DemoDutchEditor';
-const msg = helloDutch('Astronaut');
-import '../styles/globals.css';
-const initial = {
-  startPrice: 1000,
-  floorPrice: 100,
-  durationMs: 60_000,
-  intervalMs: 5_000,
-  decay: 'linear' as const,
-};
+import '../styles/globals.css'
+import DemoDutchEditor from '../components/auction/DemoDutchEditor'
 ---
 <html>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Originals Web</title>
+    <title>Originals Auctions</title>
   </head>
-  <body class="bg-gray-50 dark:bg-gray-900 min-h-screen">
-    <main class="mx-auto max-w-4xl px-4 py-8">
-      <header class="mb-8">
-        <h1 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">{msg}</h1>
-        <p class="text-gray-600 dark:text-gray-400">
-          API at <a href="http://localhost:3000/hello" class="text-blue-600 hover:text-blue-700 dark:text-blue-400 underline">/hello</a>
-        </p>
-      </header>
-      
-      <div class="rounded-lg bg-white p-6 shadow-sm dark:bg-gray-800">
-        <DemoDutchEditor client:only="react" />
+  <body class="min-h-screen bg-gray-50 dark:bg-gray-950">
+    <header class="border-b bg-white/80 backdrop-blur dark:border-gray-900 dark:bg-gray-900/80">
+      <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
+        <a href="/" class="flex items-center gap-2 text-lg font-semibold">
+          <span class="inline-block h-6 w-6 rounded bg-black dark:bg-white"></span>
+          <span>Originals</span>
+        </a>
+        <nav class="flex items-center gap-3 text-sm">
+          <a href="/auctions" class="text-gray-700 hover:text-black dark:text-gray-300 dark:hover:text-white">Auctions</a>
+          <a href="/docs/auction-type" class="text-gray-700 hover:text-black dark:text-gray-300 dark:hover:text-white">Docs</a>
+          <a href="https://github.com" class="text-gray-700 hover:text-black dark:text-gray-300 dark:hover:text-white" rel="noreferrer" target="_blank">GitHub</a>
+        </nav>
       </div>
+    </header>
+
+    <main>
+      <!-- Hero -->
+      <section class="border-b bg-gradient-to-b from-white to-gray-50 py-16 dark:from-gray-900 dark:to-gray-950">
+        <div class="mx-auto max-w-6xl px-4">
+          <div class="grid grid-cols-1 items-center gap-8 md:grid-cols-2">
+            <div>
+              <h1 class="text-4xl font-bold tracking-tight text-gray-900 dark:text-white md:text-5xl">Run English and Dutch auctions with modern tools</h1>
+              <p class="mt-4 text-lg text-gray-600 dark:text-gray-300">Production-ready components, types, and utilities for building auction experiences quickly.</p>
+              <div class="mt-6 flex flex-wrap gap-3">
+                <a href="/auctions" class="button">Browse auctions</a>
+                <a href="/docs/auction-type" class="button button-secondary">Read the docs</a>
+              </div>
+            </div>
+            <div class="rounded-xl border bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+              <div class="text-sm text-muted-foreground mb-2">Playground</div>
+              <DemoDutchEditor client:only="react" />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Features -->
+      <section class="py-12">
+        <div class="mx-auto max-w-6xl px-4">
+          <div class="grid grid-cols-1 gap-6 md:grid-cols-3">
+            <div class="rounded-lg border bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+              <h3 class="text-base font-semibold">Typed primitives</h3>
+              <p class="mt-1 text-sm text-muted-foreground">Strong TypeScript types for auctions, bids, prices, and schedules.</p>
+            </div>
+            <div class="rounded-lg border bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+              <h3 class="text-base font-semibold">UI building blocks</h3>
+              <p class="mt-1 text-sm text-muted-foreground">Card and list layouts, filters, and pagination components.</p>
+            </div>
+            <div class="rounded-lg border bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+              <h3 class="text-base font-semibold">Bun-native APIs</h3>
+              <p class="mt-1 text-sm text-muted-foreground">SQLite-backed API with Bun-first adapters and tests.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- CTA -->
+      <section class="border-t py-12">
+        <div class="mx-auto max-w-6xl px-4">
+          <div class="grid grid-cols-1 items-center gap-6 rounded-xl border bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900 md:grid-cols-2">
+            <div>
+              <h2 class="text-2xl font-semibold">Ready to get started?</h2>
+              <p class="mt-2 text-sm text-muted-foreground">Use the example components or wire your own data to the adapters.</p>
+            </div>
+            <div class="flex justify-end gap-3">
+              <a href="/auctions" class="button">Explore auctions</a>
+              <a href="/docs/dutch-schedule" class="button button-secondary">Dutch docs</a>
+            </div>
+          </div>
+        </div>
+      </section>
     </main>
-  </body>
+
+    <footer class="border-t py-6 text-center text-sm text-muted-foreground">
+      <div class="mx-auto max-w-6xl px-4">© {new Date().getFullYear()} Originals. All rights reserved.</div>
+    </footer>
   </html>

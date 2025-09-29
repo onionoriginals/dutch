@@ -89,9 +89,14 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
   const app = new Elysia()
     .use(cors({
       origin: (request) => {
-        const host = request.headers.get('host') || request.headers.get('Host')
-        if (!host) return true
-        return isOriginAllowed(host)
+        const originHeader = request.headers.get('origin') || request.headers.get('Origin')
+        if (!originHeader) return true
+        try {
+          const host = new URL(originHeader).host
+          return isOriginAllowed(host)
+        } catch {
+          return false
+        }
       },
       credentials: true,
     }))
