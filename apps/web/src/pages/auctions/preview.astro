@@ -1,0 +1,172 @@
+---
+import React from 'react'
+import Card from '../../components/ui/card.astro'
+import Button from '../../components/ui/button.astro'
+import Badge from '../../components/ui/badge.astro'
+import Sparkline from '../../components/charts/Sparkline'
+import ShareLink from '../../components/preview/ShareLink'
+import { parseAuctionFromQuery, computeWarnings, formatCurrency, type Auction } from '../../lib/auction'
+
+const url = new URL(Astro.request.url)
+const auction = parseAuctionFromQuery(url.searchParams)
+const warnings = auction ? computeWarnings(auction) : []
+---
+<html>
+  <head>
+    <link rel="stylesheet" href="/src/styles/tailwind.css" />
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Auction Preview</title>
+    <style>
+      @media print {
+        .no-print { display: none !important; }
+        .card { break-inside: avoid; box-shadow: none; }
+      }
+      .grid { display: grid; gap: 16px; }
+      @media (min-width: 768px) { .md\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+      @media (min-width: 1024px) { .lg\:grid-cols-3 { grid-template-columns: repeat(3, minmax(0,1fr)); } }
+    </style>
+  </head>
+  <body>
+    <main style="max-width: 1120px; margin: 0 auto; padding: 16px;">
+      { !auction && (
+        <section>
+          <h1 style="font-size: 1.5rem; font-weight: 700;">Auction Preview</h1>
+          <p style="margin-top: 8px; color: #6b7280;">Missing or invalid state. Provide a base64url encoded <code>state</code> query param.</p>
+        </section>
+      ) }
+
+      { auction && (
+        <>
+          <section class="no-print" style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom: 12px; flex-wrap: wrap;">
+            <div>
+              <h1 style="font-size: 1.5rem; font-weight: 700;">Review auction config</h1>
+              <p style="color:#6b7280;">Confirm details before publishing.</p>
+            </div>
+            <div style="display:flex; gap:8px; flex-wrap: wrap;">
+              <Button href="/auctions/wizard/overview" variant="secondary">Edit overview</Button>
+              <Button href="/auctions/wizard/pricing" variant="secondary">Edit pricing</Button>
+              <Button href="/auctions/wizard/schedule" variant="secondary">Edit schedule</Button>
+              <Button href="/auctions/wizard/timing" variant="secondary">Edit timing</Button>
+              <Button href="/auctions/wizard/fees" variant="secondary">Edit fees</Button>
+            </div>
+          </section>
+
+          { warnings.length > 0 && (
+            <section class="no-print" style="margin-bottom:12px; border:1px solid #fbbf24; background:#fffbeb; color:#92400e; border-radius:8px; padding:12px;">
+              <ul style="padding-left: 18px; list-style: disc; margin:0;">
+                { warnings.map((w) => <li>{w}</li>) }
+              </ul>
+            </section>
+          ) }
+
+          <section class="no-print" style="display:flex; justify-content:flex-end; margin-bottom: 12px;">
+            <ShareLink client:load auction={auction as Auction} />
+          </section>
+
+          <section class="grid md:grid-cols-2 lg:grid-cols-3">
+            <Card>
+              <div slot="default">
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.9rem;">
+                  <div>
+                    <div style="color:#6b7280;">Title</div>
+                    <div style="font-weight: 600;">{auction.title}</div>
+                  </div>
+                  <div>
+                    <div style="color:#6b7280;">Lots</div>
+                    <div style="font-weight: 600;">{auction.lots}</div>
+                  </div>
+                  <div>
+                    <div style="color:#6b7280;">Currency</div>
+                    <div style="font-weight: 600;">{auction.currency}</div>
+                  </div>
+                  <div>
+                    <div style="color:#6b7280;">Type</div>
+                    <div style="font-weight: 600; text-transform: capitalize;">{auction.pricing.type}</div>
+                  </div>
+                </div>
+              </div>
+            </Card>
+
+            <Card>
+              <div slot="default">
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.9rem;">
+                  <div>
+                    <div style="color:#6b7280;">Start price</div>
+                    <div style="font-weight: 600;">{formatCurrency(auction.pricing.startPrice, auction.currency)}</div>
+                  </div>
+                  { auction.pricing.floorPrice !== undefined && (
+                    <div>
+                      <div style="color:#6b7280;">Floor price</div>
+                      <div style="font-weight: 600;">{formatCurrency(auction.pricing.floorPrice, auction.currency)}</div>
+                    </div>
+                  ) }
+                  { auction.pricing.bidIncrement !== undefined && (
+                    <div>
+                      <div style="color:#6b7280;">Bid increment</div>
+                      <div style="font-weight: 600;">{formatCurrency(auction.pricing.bidIncrement, auction.currency)}</div>
+                    </div>
+                  ) }
+                </div>
+              </div>
+            </Card>
+
+            <Card>
+              <div slot="default">
+                { auction.schedule?.points?.length && auction.schedule.points.length > 1 ? (
+                  <div style="display:flex; align-items:center; gap:12px;">
+                    <Sparkline client:load values={auction.schedule.points.map(p => p.price)} />
+                    <div style="font-size: 0.8rem; color:#6b7280;">
+                      {formatCurrency(auction.schedule.points[0].price, auction.currency)} → {formatCurrency(auction.schedule.points[auction.schedule.points.length - 1].price, auction.currency)}
+                    </div>
+                  </div>
+                ) : (
+                  <div style="font-size: 0.9rem; color:#6b7280;">No schedule</div>
+                ) }
+              </div>
+            </Card>
+
+            <Card>
+              <div slot="default">
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.9rem;">
+                  <div>
+                    <div style="color:#6b7280;">Starts</div>
+                    <div style="font-weight: 600;">{new Date(auction.timing.startAt).toLocaleString()}</div>
+                  </div>
+                  <div>
+                    <div style="color:#6b7280;">Ends</div>
+                    <div style="font-weight: 600;">{new Date(auction.timing.endAt).toLocaleString()}</div>
+                  </div>
+                  { auction.timing.extensionWindowSeconds !== undefined && (
+                    <div>
+                      <div style="color:#6b7280;">Extension window</div>
+                      <div style="font-weight: 600;">{auction.timing.extensionWindowSeconds}s</div>
+                    </div>
+                  ) }
+                </div>
+              </div>
+            </Card>
+
+            <Card>
+              <div slot="default">
+                { auction.fees.length === 0 ? (
+                  <div style="font-size: 0.9rem; color:#6b7280;">No fees</div>
+                ) : (
+                  <ul style="margin:0; padding:0; list-style:none;">
+                    { auction.fees.map((f) => (
+                      <li style="display:flex; align-items:center; justify-content:space-between; padding:8px 0; border-bottom: 1px solid #f3f4f6;">
+                        <div style="color:#374151;">{f.name}</div>
+                        <div style="font-weight: 600;">{ f.type === 'percent' ? `${f.amount}%` : formatCurrency(f.amount, auction.currency) }</div>
+                      </li>
+                    )) }
+                  </ul>
+                ) }
+              </div>
+            </Card>
+          </section>
+        </>
+      ) }
+    </main>
+  </body>
+</html>
+

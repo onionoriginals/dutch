@@ -1,0 +1,6 @@
+@import "@tailwindcss/postcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-border: hsl(var(--border));
+}

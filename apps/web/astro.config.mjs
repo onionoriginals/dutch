@@ -1,9 +1,10 @@
 import { defineConfig } from 'astro/config'
-import tailwind from '@astrojs/tailwind'
 import react from '@astrojs/react'
+import tailwindPostcss from '@tailwindcss/postcss'
+import autoprefixer from 'autoprefixer'
 
 export default defineConfig({
-  integrations: [tailwind({ applyBaseStyles: false }), react()],
+  integrations: [react()],
   server: {
     host: true,
     port: 4321,
@@ -15,6 +16,11 @@ export default defineConfig({
     allowedHosts: true
   },
   vite: {
+    css: {
+      postcss: {
+        plugins: [tailwindPostcss(), autoprefixer()]
+      }
+    },
     resolve: {
       // Prefer the "browser" export condition so @originals/dutch resolves to its browser build
       conditions: ['browser'],
