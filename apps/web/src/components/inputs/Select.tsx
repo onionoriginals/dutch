@@ -15,11 +15,11 @@ export function Select({ children, placeholder }: SelectProps) {
   const value = String(getValues(name) ?? '')
   return (
     <RadixSelect.Root value={value} onValueChange={(v) => setValue(name, v, { shouldValidate: true })}>
-      <RadixSelect.Trigger id={inputId} aria-invalid={hasError || undefined} aria-describedby={hasError ? errorId : undefined}>
+      <RadixSelect.Trigger id={inputId} aria-invalid={hasError || undefined} aria-describedby={hasError ? errorId : undefined} className="input pr-8">
         <RadixSelect.Value placeholder={placeholder} />
       </RadixSelect.Trigger>
-      <RadixSelect.Content>
-        <RadixSelect.Viewport>
+      <RadixSelect.Content className="rounded-md border bg-card shadow-md">
+        <RadixSelect.Viewport className="p-1">
           {children}
         </RadixSelect.Viewport>
       </RadixSelect.Content>

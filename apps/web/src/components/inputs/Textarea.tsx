@@ -9,7 +9,7 @@ export function Textarea(props: TextareaProps) {
   const { name, inputId, errorId } = useFieldContext()
   const hasError = Boolean((formState.errors as any)[name])
   return (
-    <textarea
+    <textarea className="input"
       id={inputId}
       aria-invalid={hasError || undefined}
       aria-describedby={hasError ? errorId : undefined}

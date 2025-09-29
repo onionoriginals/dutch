@@ -15,7 +15,7 @@ export function NumberInput({ step = 'any', ...rest }: NumberInputProps) {
     setValue(name, value === '' ? undefined : Number(value), { shouldValidate: true })
   }
   return (
-    <input
+    <input className="input"
       id={inputId}
       type="number"
       step={step}

@@ -26,7 +26,7 @@ export function FormField<TFieldValues extends Record<string, any>>({ name, chil
 
   return (
     <FieldContext.Provider value={{ name, inputId, errorId }}>
-      <div data-form-field={name}>
+      <div data-form-field={name} className="space-y-2">
         {children}
       </div>
     </FieldContext.Provider>
@@ -38,7 +38,7 @@ export type FieldLabelProps = React.LabelHTMLAttributes<HTMLLabelElement> & { ch
 export function FieldLabel({ children, ...rest }: FieldLabelProps) {
   const { inputId } = useFieldContext()
   return (
-    <label htmlFor={inputId} {...rest}>
+    <label htmlFor={inputId} className="text-muted-foreground text-[13px] font-medium" {...rest}>
       {children}
     </label>
   )
@@ -51,7 +51,7 @@ export function FieldError() {
   if (!err) return null
   const message = (err?.message ?? String(err)) as string
   return (
-    <div id={errorId} role="alert" aria-live="polite">
+    <div id={errorId} role="alert" aria-live="polite" className="text-[13px] text-destructive">
       {message}
     </div>
   )
