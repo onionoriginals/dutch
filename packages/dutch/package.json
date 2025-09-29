@@ -9,7 +9,10 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
+      "import": {
+        "browser": "./dist/browser.js",
+        "default": "./dist/index.js"
+      },
       "require": "./dist/index.cjs",
       "default": "./dist/index.js"
     },

@@ -14,10 +14,10 @@
     "start": "turbo run start --parallel",
     "clean": "rimraf node_modules bun.lock && find . -name node_modules -type d -prune -exec rm -rf {} +",
     "dev:api": "bun --cwd apps/api run dev",
-    "dev:web": "bun --cwd apps/web run dev",
+    "dev:web": "npm --prefix apps/web run dev",
     "dev:dutch": "bun --cwd packages/dutch run dev",
     "start:api": "bun --cwd apps/api run start",
-    "start:web": "bun --cwd apps/web run start"
+    "start:web": "npm --prefix apps/web run start"
   },
   "devDependencies": {
     "@types/bun": "latest",

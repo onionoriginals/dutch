@@ -10,6 +10,10 @@ export default defineConfig({
     port: 4321
   },
   vite: {
+    resolve: {
+      // Prefer the "browser" export condition so @originals/dutch resolves to its browser build
+      conditions: ['browser']
+    },
     build: {
       rollupOptions: {
         external: ['bun:sqlite', 'bun:test']

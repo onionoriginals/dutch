@@ -557,6 +557,12 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         }
 
         const [txid, voutStr] = String(asset).split('i')
+        if (!voutStr) {
+          return new Response(JSON.stringify({ error: 'Invalid inscription format. Expected <txid>i<index>' }), {
+            status: 400,
+            headers: { 'content-type': 'application/json' },
+          })
+        }
         const voutIndex = parseInt(voutStr, 10)
         if (!Number.isFinite(voutIndex)) {
           return new Response(JSON.stringify({ error: 'Invalid inscription vout index' }), {
@@ -574,7 +580,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
             headers: { 'content-type': 'application/json' },
           })
         }
-        const txJson = await txResp.json()
+        const txJson = await txResp.json() as any
         const vout = (txJson?.vout || [])[voutIndex]
         if (!vout) {
           return new Response(JSON.stringify({ error: 'Inscription output not found' }), {
@@ -590,7 +596,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
             headers: { 'content-type': 'application/json' },
           })
         }
-        const outspends = await outspendsResp.json()
+        const outspends = await outspendsResp.json() as any
         const outspend = outspends?.[voutIndex]
         const spent = !!outspend?.spent
         const ownerMatches = String(vout?.scriptpubkey_address || '') === String(sellerAddress)
@@ -650,7 +656,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
           created_at: now,
           updated_at: now,
         }
-        database.storeAuction(auction as any, `enc_${keyPair.privateKey}`)
+        database.storeAuction(auction as any, `enc_${keyPair.privateKeyHex}`)
 
         return {
           id: auctionId,
