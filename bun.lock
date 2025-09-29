@@ -26,7 +26,7 @@
     "apps/web": {
       "name": "@originals/web",
       "dependencies": {
-        "@originals/dutch": "workspace:*",
+        "@originals/dutch": "file:../../packages/dutch",
         "astro": "^4.15.3",
       },
     },
@@ -952,6 +952,8 @@
     "@isaacs/cliui/string-width": ["string-width@5.1.2", "", { "dependencies": { "eastasianwidth": "^0.2.0", "emoji-regex": "^9.2.2", "strip-ansi": "^7.0.1" } }, "sha512-HnLOCR3vjcY8beoNLtcjZ5/nxn2afmME6lhrDrebokqMap+XbeW8n9TXpPDOqdGK5qcI3oT0GKTW6wC7EMiVqA=="],
 
     "@isaacs/cliui/wrap-ansi": ["wrap-ansi@8.1.0", "", { "dependencies": { "ansi-styles": "^6.1.0", "string-width": "^5.0.1", "strip-ansi": "^7.0.1" } }, "sha512-si7QWI6zUMq56bESFvagtmzMdGOtoxfR+Sez11Mobfc7tm+VkUckk9bW2UeffTGVUbOksxmSw0AA2gs8g71NCQ=="],
+
+    "@originals/web/@originals/dutch": ["@originals/dutch@file:packages/dutch", { "dependencies": { "bip32": "^5.0.0-rc.0", "bip39": "^3.1.0", "bitcoinjs-lib": "^6.1.7", "crypto-js": "^4.2.0", "tiny-secp256k1": "^2.2.4" } }],
 
     "@rollup/pluginutils/estree-walker": ["estree-walker@2.0.2", "", {}, "sha512-Rfkk/Mp/DL7JVje3u18FxFujQlTNR2q6QfMSMB7AvCBx91NGj/ba3kCfza0f6dVDbw7YlRf/nDrn7pQrCCyQ/w=="],
 
