@@ -1141,6 +1141,81 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
     .post('/api/admin/check-escrow-timeouts', () => {
       return success(database.checkEscrowTimeouts())
     })
+    // Confirm inscription escrow after transaction broadcast
+    .post('/api/auction/:auctionId/confirm-escrow', async ({ params, body, set }) => {
+      try {
+        const { auctionId } = params
+        const { transactionId, signedPsbt } = body
+        
+        if (!transactionId || !signedPsbt) {
+          set.status = 400
+          return error('transactionId and signedPsbt required', 'VALIDATION_ERROR')
+        }
+        
+        // Get the auction
+        const auction = await (database as any).getAuction(auctionId)
+        if (!auction) {
+          set.status = 404
+          return error('Auction not found', 'NOT_FOUND')
+        }
+        
+        // Store transaction ID - update the auction record directly
+        // The transaction_id field is already in the schema
+        const now = Math.floor(Date.now() / 1000)
+        const db = (database as any).db
+        db.query(`
+          UPDATE single_auctions 
+          SET transaction_id = ?, updated_at = ? 
+          WHERE id = ?
+        `).run(transactionId, now, auctionId)
+        
+        // Update inscription escrow status
+        const escrowUpdate = database.updateInscriptionStatus({
+          auctionId,
+          status: 'escrowed',
+          details: {
+            transactionId,
+            timestamp: Math.floor(Date.now() / 1000),
+          },
+        })
+        
+        logger.info('Auction escrow confirmed', {
+          operation: 'confirm-escrow',
+          auctionId,
+          transactionId,
+        })
+        
+        return success({
+          auctionId,
+          transactionId,
+          status: 'escrowed',
+          escrowUpdate,
+        })
+      } catch (err: any) {
+        logger.error('Failed to confirm escrow', {
+          operation: 'confirm-escrow',
+          error: err.message,
+          auctionId: params.auctionId,
+        })
+        set.status = 500
+        return error(err?.message || 'internal_error', 'INTERNAL_ERROR')
+      }
+    }, {
+      params: t.Object({ auctionId: t.String() }),
+      body: t.Object({
+        transactionId: t.String(),
+        signedPsbt: t.String(),
+      }),
+      response: t.Union([
+        SuccessResponse(t.Object({
+          auctionId: t.String(),
+          transactionId: t.String(),
+          status: t.String(),
+          escrowUpdate: UnknownRecord,
+        })),
+        ErrorResponse
+      ])
+    })
 
 
     // Serve static assets from Astro's dist for css/js/html requests

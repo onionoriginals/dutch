@@ -7,6 +7,8 @@ import { DateTimePicker } from '../inputs/DateTimePicker'
 import { DutchAuctionSchema, dutchAuctionStepFields } from '../../lib/validation/auction'
 import { normalizeDutch } from '../../utils/normalizeAuction'
 import { btcToSats, formatSats, btcToUsd, formatCurrency, getBtcUsdRate } from '../../utils/currency'
+import { signPsbt, connectWallet } from '../../lib/bitcoin/psbtSigner'
+import { broadcastTransaction, pollForConfirmations, getMempoolLink, type TransactionStatus } from '../../lib/bitcoin/broadcastTransaction'
 
 type DraftShape = {
   values: any
@@ -62,6 +64,16 @@ export default function CreateAuctionWizard() {
   const { restored, clearDraft } = useDraftPersistence(formValues)
 
   const [submittedPayload, setSubmittedPayload] = React.useState(null as any | null)
+  const [psbtSigningState, setPsbtSigningState] = React.useState<{
+    stage: 'idle' | 'wallet_connect' | 'api_call' | 'signing' | 'broadcasting' | 'confirming' | 'success' | 'error'
+    psbt?: string
+    auctionId?: string
+    auctionAddress?: string
+    txid?: string
+    confirmations?: number
+    error?: string
+    inscriptionInfo?: any
+  }>({ stage: 'idle' })
 
   const defaultValues = React.useMemo(() => {
     if (restored?.values) return restored.values as Record<string, unknown>
@@ -76,11 +88,29 @@ export default function CreateAuctionWizard() {
     const payload = normalizeDutch(values)
     
     try {
+      // Step 1: Connect wallet to get seller address
+      setPsbtSigningState({ stage: 'wallet_connect' })
+      
+      const walletResult = await connectWallet()
+      if (!walletResult.success || !walletResult.address) {
+        throw new Error(walletResult.error || 'Failed to connect wallet')
+      }
+      
+      const sellerAddress = walletResult.address
+      
       // Parse inscription IDs (one per line)
       const inscriptionIds = values.inscriptionIds
         .split('\n')
         .map((id: string) => id.trim())
         .filter((id: string) => id.length > 0)
+      
+      if (inscriptionIds.length === 0) {
+        throw new Error('Please provide at least one inscription ID')
+      }
+      
+      // For now, we'll use the first inscription for single-item auction
+      // TODO: Handle multiple inscriptions for clearing auctions
+      const primaryInscriptionId = inscriptionIds[0]
       
       // Calculate quantity from number of inscription IDs
       const quantity = inscriptionIds.length
@@ -90,20 +120,21 @@ export default function CreateAuctionWizard() {
         (new Date(values.endTime).getTime() - new Date(values.startTime).getTime()) / 1000
       )
       
-      // Make API call to create clearing auction
-      const response = await fetch('/api/clearing/create-auction', {
+      // Step 2: Call API to create auction and get PSBT
+      setPsbtSigningState({ stage: 'api_call' })
+      
+      const response = await fetch('/api/create-auction', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          inscriptionIds: inscriptionIds,
-          quantity: quantity,
+          asset: primaryInscriptionId,
           startPrice: values.startPrice,
           minPrice: values.endPrice,
           duration: duration,
           decrementInterval: values.decrementIntervalSeconds,
-          sellerAddress: 'tb1q...', // TODO: Connect wallet to get seller address
+          sellerAddress: sellerAddress,
         }),
       })
 
@@ -113,18 +144,121 @@ export default function CreateAuctionWizard() {
         throw new Error(result.error || 'Failed to create auction')
       }
 
-      console.log('Clearing auction created:', result)
-      clearDraft()
-      setSubmittedPayload({ ...payload, apiResponse: result })
+      const { id: auctionId, address: auctionAddress, psbt, inscriptionInfo } = result.data
+      
+      console.log('Auction created, PSBT generated:', { auctionId, auctionAddress })
+      
+      // Step 3: Store PSBT and wait for user to sign
+      setPsbtSigningState({
+        stage: 'signing',
+        psbt,
+        auctionId,
+        auctionAddress,
+        inscriptionInfo,
+      })
+      
     } catch (error) {
       console.error('Failed to create auction:', error)
-      alert(`Failed to create auction: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      setPsbtSigningState({
+        stage: 'error',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      })
     }
-  }, [clearDraft])
+  }, [])
+  
+  // Handler for PSBT signing after user clicks "Sign with Wallet"
+  const handleSignPsbt = React.useCallback(async () => {
+    if (!psbtSigningState.psbt || !psbtSigningState.auctionId) {
+      return
+    }
+    
+    try {
+      setPsbtSigningState(prev => ({ ...prev, stage: 'signing' }))
+      
+      // Sign PSBT with wallet
+      const signResult = await signPsbt(psbtSigningState.psbt, {
+        autoFinalize: true,
+      })
+      
+      if (!signResult.success || !signResult.signedPsbt) {
+        throw new Error(signResult.error || 'Failed to sign PSBT')
+      }
+      
+      console.log('PSBT signed successfully')
+      
+      // Step 4: Broadcast transaction
+      setPsbtSigningState(prev => ({ ...prev, stage: 'broadcasting' }))
+      
+      // The signed PSBT from wallet is already in hex format for most wallets
+      // If it's base64, we'd need to convert it using bitcoinjs-lib
+      const broadcastResult = await broadcastTransaction(signResult.signedPsbt, 'testnet')
+      
+      if (!broadcastResult.success || !broadcastResult.txid) {
+        throw new Error(broadcastResult.error || 'Failed to broadcast transaction')
+      }
+      
+      const txid = broadcastResult.txid
+      console.log('Transaction broadcast:', txid)
+      
+      // Step 5: Confirm escrow with API
+      await fetch(`/api/auction/${psbtSigningState.auctionId}/confirm-escrow`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          transactionId: txid,
+          signedPsbt: signResult.signedPsbt,
+        }),
+      })
+      
+      // Step 6: Poll for confirmations
+      setPsbtSigningState(prev => ({
+        ...prev,
+        stage: 'confirming',
+        txid,
+        confirmations: 0,
+      }))
+      
+      // Poll with progress callback
+      await pollForConfirmations(txid, 'testnet', {
+        targetConfirmations: 1,
+        maxAttempts: 60,
+        pollIntervalMs: 5000,
+        onProgress: (status: TransactionStatus) => {
+          setPsbtSigningState(prev => ({
+            ...prev,
+            confirmations: status.confirmations,
+          }))
+        },
+      })
+      
+      // Step 7: Success!
+      setPsbtSigningState(prev => ({
+        ...prev,
+        stage: 'success',
+      }))
+      
+      clearDraft()
+      
+    } catch (error) {
+      console.error('PSBT signing workflow failed:', error)
+      setPsbtSigningState(prev => ({
+        ...prev,
+        stage: 'error',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      }))
+    }
+  }, [psbtSigningState.psbt, psbtSigningState.auctionId, clearDraft])
 
   const handleValuesChange = React.useCallback((v: any) => {
     setFormValues(v)
   }, [])
+
+  // Show PSBT signing workflow UI if in progress
+  if (psbtSigningState.stage !== 'idle') {
+    return <PsbtSigningWorkflow state={psbtSigningState} onSign={handleSignPsbt} onRetry={() => setPsbtSigningState({ stage: 'idle' })} />
+  }
 
   if (submittedPayload) {
     return (
@@ -729,6 +863,176 @@ function QuickTimingControls() {
         </div>
       </div>
       <div className="mt-2 text-xs text-muted-foreground">You can still fine-tune exact times below.</div>
+    </div>
+  )
+}
+
+// PSBT Signing Workflow Component
+function PsbtSigningWorkflow({ 
+  state, 
+  onSign, 
+  onRetry 
+}: { 
+  state: any
+  onSign: () => void
+  onRetry: () => void
+}) {
+  const getStageInfo = () => {
+    switch (state.stage) {
+      case 'wallet_connect':
+        return {
+          title: 'Connecting to Wallet',
+          description: 'Please approve the wallet connection request...',
+          icon: '🔌',
+          color: 'blue',
+        }
+      case 'api_call':
+        return {
+          title: 'Creating Auction',
+          description: 'Generating PSBT and auction address...',
+          icon: '⚙️',
+          color: 'blue',
+        }
+      case 'signing':
+        return {
+          title: 'Sign with Wallet',
+          description: 'Please sign the transaction in your wallet to escrow your inscription',
+          icon: '✍️',
+          color: 'yellow',
+          showSignButton: !state.txid,
+        }
+      case 'broadcasting':
+        return {
+          title: 'Broadcasting Transaction',
+          description: 'Sending your transaction to the Bitcoin network...',
+          icon: '📡',
+          color: 'blue',
+        }
+      case 'confirming':
+        return {
+          title: 'Waiting for Confirmation',
+          description: `Transaction broadcast! Waiting for confirmations... (${state.confirmations || 0}/1)`,
+          icon: '⏳',
+          color: 'blue',
+        }
+      case 'success':
+        return {
+          title: 'Auction Created Successfully!',
+          description: 'Your inscription has been escrowed and the auction is now active',
+          icon: '✅',
+          color: 'green',
+        }
+      case 'error':
+        return {
+          title: 'Error',
+          description: state.error || 'An error occurred',
+          icon: '❌',
+          color: 'red',
+        }
+      default:
+        return {
+          title: 'Processing',
+          description: 'Please wait...',
+          icon: '⏳',
+          color: 'gray',
+        }
+    }
+  }
+
+  const info = getStageInfo()
+
+  const colorClasses = {
+    blue: 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800',
+    yellow: 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-600 dark:text-yellow-400 border-yellow-200 dark:border-yellow-800',
+    green: 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border-green-200 dark:border-green-800',
+    red: 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800',
+    gray: 'bg-gray-50 dark:bg-gray-900/20 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-800',
+  }
+
+  return (
+    <div className={`rounded-lg border p-8 text-center ${colorClasses[info.color as keyof typeof colorClasses]}`}>
+      <div className="text-6xl mb-4">{info.icon}</div>
+      <h2 className="text-2xl font-bold mb-2">{info.title}</h2>
+      <p className="text-lg mb-6">{info.description}</p>
+
+      {state.auctionAddress && (
+        <div className="bg-white/80 dark:bg-gray-800/80 rounded-lg p-4 text-left mb-6">
+          <h3 className="font-semibold mb-2 text-gray-900 dark:text-gray-100">Auction Details:</h3>
+          <div className="text-sm space-y-1 text-gray-700 dark:text-gray-300 break-all">
+            <p><strong>Auction ID:</strong> {state.auctionId}</p>
+            <p><strong>Auction Address:</strong> {state.auctionAddress}</p>
+            {state.inscriptionInfo && (
+              <>
+                <p><strong>Inscription TXID:</strong> {state.inscriptionInfo.txid}</p>
+                <p><strong>Inscription Vout:</strong> {state.inscriptionInfo.vout}</p>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {state.txid && (
+        <div className="bg-white/80 dark:bg-gray-800/80 rounded-lg p-4 text-left mb-6">
+          <h3 className="font-semibold mb-2 text-gray-900 dark:text-gray-100">Transaction:</h3>
+          <div className="text-sm space-y-2 text-gray-700 dark:text-gray-300">
+            <p className="break-all"><strong>TX ID:</strong> {state.txid}</p>
+            <a 
+              href={getMempoolLink(state.txid, 'testnet')} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700 underline"
+            >
+              View on mempool.space →
+            </a>
+            {state.confirmations !== undefined && (
+              <p><strong>Confirmations:</strong> {state.confirmations}</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="flex gap-4 justify-center">
+        {info.showSignButton && (
+          <button 
+            onClick={onSign}
+            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-lg"
+          >
+            Sign with Wallet
+          </button>
+        )}
+
+        {state.stage === 'error' && (
+          <button 
+            onClick={onRetry}
+            className="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium"
+          >
+            Try Again
+          </button>
+        )}
+
+        {state.stage === 'success' && (
+          <>
+            <button 
+              onClick={onRetry}
+              className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"
+            >
+              Create Another Auction
+            </button>
+            <button 
+              onClick={() => window.location.href = '/'}
+              className="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 font-medium dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500"
+            >
+              Back to Home
+            </button>
+          </>
+        )}
+      </div>
+
+      {(state.stage === 'wallet_connect' || state.stage === 'api_call' || state.stage === 'broadcasting' || state.stage === 'confirming') && (
+        <div className="mt-6">
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-current"></div>
+        </div>
+      )}
     </div>
   )
 }
