@@ -137,12 +137,28 @@ const LOG_LEVELS: Record<LogLevel, number> = {
   error: 3,
 }
 
+/**
+ * Validates and normalizes the log level from environment variable
+ * Returns a valid LogLevel or defaults to 'info' if invalid
+ */
+function getValidLogLevel(envLevel: string | undefined): LogLevel {
+  const level = envLevel?.toLowerCase()
+  if (level && (level === 'debug' || level === 'info' || level === 'warn' || level === 'error')) {
+    return level as LogLevel
+  }
+  // Warn about invalid log level if one was provided
+  if (envLevel) {
+    console.warn(`[Logger] Invalid LOG_LEVEL "${envLevel}". Falling back to "info". Valid values: debug, info, warn, error`)
+  }
+  return 'info'
+}
+
 class Logger {
   private config: LoggerConfig
 
   constructor(config?: Partial<LoggerConfig>) {
     this.config = {
-      minLevel: (Bun.env.LOG_LEVEL as LogLevel) || 'info',
+      minLevel: config?.minLevel || getValidLogLevel(Bun.env.LOG_LEVEL),
       enableConsole: true,
       enableJson: Bun.env.LOG_FORMAT === 'json' || Bun.env.NODE_ENV === 'production',
       ...config,

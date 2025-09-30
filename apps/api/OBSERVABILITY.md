@@ -154,6 +154,9 @@ All audit logs automatically apply sensitive data redaction.
 ### Environment Variables
 
 - `LOG_LEVEL`: Minimum log level (`debug`, `info`, `warn`, `error`). Default: `info`
+  - **Case-insensitive**: `DEBUG`, `Debug`, and `debug` are all valid
+  - **Validation**: Invalid values automatically fall back to `info` with a warning
+  - **Safe**: Misconfiguration won't disable logging
 - `LOG_FORMAT`: Output format (`text` or `json`). Default: `text` in development, `json` in production
 - `NODE_ENV`: Environment name (affects default log format)
 

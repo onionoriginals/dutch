@@ -188,6 +188,46 @@ describe('Logger - Structured Logging', () => {
     expect(customLogger).toBeDefined()
   })
 
+  test('should handle invalid LOG_LEVEL gracefully', () => {
+    // Save original value
+    const originalLogLevel = Bun.env.LOG_LEVEL
+    
+    // Test with invalid log level
+    Bun.env.LOG_LEVEL = 'verbose'
+    const loggerWithInvalid = createLogger()
+    expect(loggerWithInvalid).toBeDefined()
+    
+    // Logger should still work (won't throw)
+    expect(() => {
+      loggerWithInvalid.info('Test message')
+      loggerWithInvalid.error('Error message')
+    }).not.toThrow()
+    
+    // Restore original value
+    if (originalLogLevel !== undefined) {
+      Bun.env.LOG_LEVEL = originalLogLevel
+    } else {
+      delete Bun.env.LOG_LEVEL
+    }
+  })
+
+  test('should accept valid LOG_LEVEL values case-insensitively', () => {
+    const originalLogLevel = Bun.env.LOG_LEVEL
+    
+    const validLevels = ['DEBUG', 'Info', 'WARN', 'error']
+    for (const level of validLevels) {
+      Bun.env.LOG_LEVEL = level
+      expect(() => createLogger()).not.toThrow()
+    }
+    
+    // Restore
+    if (originalLogLevel !== undefined) {
+      Bun.env.LOG_LEVEL = originalLogLevel
+    } else {
+      delete Bun.env.LOG_LEVEL
+    }
+  })
+
   test('should log without errors', () => {
     // Just verify these don't throw
     logger.debug('Debug message', { debug: true })
