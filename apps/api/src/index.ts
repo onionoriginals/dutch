@@ -699,7 +699,14 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
 
         // Deterministic auction id from asset and seller to make testing easier
         const auctionId = `${txid}:${voutIndex}:${String(sellerAddress).slice(0, 8)}`
-        const { keyPair, address } = await database.generateAuctionKeyPair(auctionId)
+        
+        // ===== SECURITY: Private Key Encryption =====
+        // Get encryption password from environment variable or use default.
+        // WARNING: 'changeit' is only for development. Set AUCTION_ENCRYPTION_PASSWORD in production.
+        // See SECURITY.md for details on key management and rotation.
+        const encryptionPassword = Bun.env.AUCTION_ENCRYPTION_PASSWORD || Bun.env.ENCRYPTION_PASSWORD || 'changeit'
+        
+        const { keyPair, address } = await database.generateAuctionKeyPair(auctionId, { password: encryptionPassword })
 
         // Build a minimal PSBT moving the UTXO to the auction address
         const network = getBitcoinJsNetwork()
@@ -723,6 +730,13 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         }
         psbt.addOutput({ script: outputScript, value: outputValue })
 
+        // ===== SECURITY: Encrypt Private Key =====
+        // Encrypt the private key using AES-256-GCM with PBKDF2-SHA256 (100k iterations).
+        // The encrypted payload includes: algorithm, KDF, iterations, random IV, random salt, and ciphertext.
+        // This ensures private keys are never stored in plaintext in the database.
+        // See SECURITY.md for encryption algorithm details and verification steps.
+        const encryptedPrivateKey = await database.encryptUtf8(keyPair.privateKeyHex, encryptionPassword)
+
         const now = Math.floor(Date.now() / 1000)
         const auction = {
           id: auctionId,
@@ -739,7 +753,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
           created_at: now,
           updated_at: now,
         }
-        database.storeAuction(auction as any, `enc_${keyPair.privateKeyHex}`)
+        await database.storeAuction(auction as any, encryptedPrivateKey)
 
         return {
           id: auctionId,
