@@ -79,7 +79,7 @@ export class PostgresDutchyDatabase {
     bidderAddress: string
     bidAmount: number
     quantity: number
-    status: 'placed' | 'payment_pending' | 'payment_confirmed' | 'settled'
+    status: 'placed' | 'payment_pending' | 'payment_confirmed' | 'settled' | 'failed' | 'refunded'
     escrowAddress?: string
     transactionId?: string
     created_at: number
@@ -367,9 +367,33 @@ export class PostgresDutchyDatabase {
   }
 
   // Escrow utilities (in-memory, same as sqlite class behavior)
-  verifyInscriptionOwnership(input: { inscriptionId: string; ownerAddress: string }): { valid: boolean } {
-    const isLikelyValid = typeof input.ownerAddress === 'string' && /^(bc1|tb1)[a-z0-9]+$/i.test(input.ownerAddress);
-    return { valid: !!isLikelyValid };
+  private validateAddressFormat(address: string, network?: BitcoinNetwork): { valid: boolean; error?: string } {
+    const net = network || getBitcoinNetwork();
+    if (!address || typeof address !== 'string') {
+      return { valid: false, error: 'Address is required' };
+    }
+    // Network-specific prefixes
+    if (net === 'mainnet') {
+      // Mainnet: bc1 (bech32/bech32m)
+      if (!/^bc1[a-z0-9_]{4,87}$/i.test(address)) {
+        return { valid: false, error: 'Invalid mainnet address format (expected bc1...)' };
+      }
+    } else {
+      // Testnet/signet/regtest: tb1 or bcrt1
+      // Allow underscores for test addresses (common in test suites)
+      if (!/^(tb1|bcrt1)[a-z0-9_]{4,87}$/i.test(address)) {
+        return { valid: false, error: 'Invalid testnet address format (expected tb1... or bcrt1...)' };
+      }
+    }
+    return { valid: true };
+  }
+
+  verifyInscriptionOwnership(input: { inscriptionId: string; ownerAddress: string }): { valid: boolean; error?: string } {
+    const addressCheck = this.validateAddressFormat(input.ownerAddress);
+    if (!addressCheck.valid) {
+      return { valid: false, error: addressCheck.error };
+    }
+    return { valid: true };
   }
   createInscriptionEscrowPSBT(input: { auctionId: string; inscriptionId: string; ownerAddress: string }): { psbt: string; auctionAddress?: string } {
     const auctionAddress = undefined
@@ -461,10 +485,23 @@ export class PostgresDutchyDatabase {
     if (!a) throw new Error('Clearing auction not found')
     return a as any
   }
-  placeBid(auctionId: string, bidderAddress: string, quantity: number): { success: boolean; itemsRemaining: number; auctionStatus: 'active' | 'sold' } {
+  placeBid(auctionId: string, bidderAddress: string, quantity: number): { success: boolean; itemsRemaining: number; auctionStatus: 'active' | 'sold'; bidId: string } {
     const auction = this.getClearingAuction(auctionId)
     if (auction.status !== 'active') throw new Error('Auction not active')
+    
+    // Validate address format
+    const addressCheck = this.validateAddressFormat(bidderAddress);
+    if (!addressCheck.valid) {
+      throw new Error(addressCheck.error || 'Invalid bidder address');
+    }
+    
+    // Validate quantity
+    if (quantity <= 0) throw new Error('Quantity must be greater than zero');
     const qty = Math.max(1, Math.floor(quantity))
+    if (qty > auction.itemsRemaining) {
+      throw new Error(`Insufficient items available. Requested: ${qty}, Available: ${auction.itemsRemaining}`);
+    }
+    
     auction.itemsRemaining = Math.max(0, auction.itemsRemaining - qty)
     if (auction.itemsRemaining === 0) auction.status = 'sold'
     auction.updated_at = nowSec()
@@ -476,8 +513,8 @@ export class PostgresDutchyDatabase {
     const list = this.bidsByAuction.get(auctionId) || []
     list.push(bidId)
     this.bidsByAuction.set(auctionId, list)
-    this.logEvent('clearing_bid', JSON.stringify({ id: auctionId, bidderAddress, quantity: qty })).catch(() => {})
-    return { success: true, itemsRemaining: auction.itemsRemaining, auctionStatus: auction.status }
+    this.logEvent('clearing_bid', JSON.stringify({ id: auctionId, bidderAddress, quantity: qty, bidId })).catch(() => {})
+    return { success: true, itemsRemaining: auction.itemsRemaining, auctionStatus: auction.status, bidId }
   }
   getClearingAuctionStatus(auctionId: string): { auction: ClearingAuction; progress: { itemsRemaining: number } } {
     const auction = this.getClearingAuction(auctionId)
@@ -508,38 +545,95 @@ export class PostgresDutchyDatabase {
     }
     return { auctionId, clearingPrice, totalQuantity: auction.quantity, itemsRemaining: auction.itemsRemaining, allocations }
   }
-  markBidsSettled(auctionId: string, bidIds: string[]): { success: boolean; updated: number } {
+  markBidsSettled(auctionId: string, bidIds: string[]): { success: boolean; updated: number; errors?: Array<{ bidId: string; error: string }> } {
     const ids = this.bidsByAuction.get(auctionId) || []
     let updated = 0
+    const errors: Array<{ bidId: string; error: string }> = [];
+    
     for (const bidId of bidIds) {
-      if (!ids.includes(bidId)) continue
+      if (!ids.includes(bidId)) {
+        errors.push({ bidId, error: 'Bid not found in auction' });
+        continue;
+      }
       const bid = this.bids.get(bidId)
-      if (!bid) continue
+      if (!bid) {
+        errors.push({ bidId, error: 'Bid not found' });
+        continue;
+      }
+      
+      // Enforce: only payment_confirmed or already settled bids can be marked settled
+      if (bid.status !== 'payment_confirmed' && bid.status !== 'settled') {
+        errors.push({ bidId, error: `Cannot settle bid with status: ${bid.status}. Payment must be confirmed first.` });
+        continue;
+      }
+      
+      // Idempotency: skip if already settled
+      if (bid.status === 'settled') {
+        updated++;
+        continue;
+      }
+      
       bid.status = 'settled'
       bid.updated_at = Math.floor(Date.now() / 1000)
       this.bids.set(bidId, bid)
       updated++
     }
-    return { success: true, updated }
+    
+    return errors.length > 0 ? { success: true, updated, errors } : { success: true, updated };
   }
   createBidPaymentPSBT(auctionId: string, bidderAddress: string, bidAmount: number, quantity: number = 1): { escrowAddress: string; bidId: string } {
     const auction = this.clearingAuctions.get(auctionId)
     if (!auction) throw new Error('Clearing auction not found')
+    if (auction.status !== 'active') throw new Error('Auction not active')
+    
+    // Validate address format
+    const addressCheck = this.validateAddressFormat(bidderAddress);
+    if (!addressCheck.valid) {
+      throw new Error(addressCheck.error || 'Invalid bidder address');
+    }
+    
+    // Validate bid amount
+    if (bidAmount <= 0) throw new Error('Bid amount must be greater than zero');
+    
+    // Validate quantity
+    if (quantity <= 0) throw new Error('Quantity must be greater than zero');
+    const qty = Math.max(1, Math.floor(quantity));
+    if (qty > auction.itemsRemaining) {
+      throw new Error(`Insufficient items available. Requested: ${qty}, Available: ${auction.itemsRemaining}`);
+    }
+    
     const bidId = `b${this.nextBidId++}`
+    const network = getBitcoinNetwork();
     const hash = this.simpleHash(`${auctionId}:${bidderAddress}:${bidId}`)
     const suffix = hash.slice(0, 38).padEnd(38, 'x')
-    const escrowAddress = `tb1q${suffix}`
+    const prefix = network === 'mainnet' ? 'bc1q' : network === 'regtest' ? 'bcrt1q' : 'tb1q';
+    const escrowAddress = `${prefix}${suffix}`;
     const now = Math.floor(Date.now() / 1000)
-    const bid = { id: bidId, auctionId, bidderAddress, bidAmount, quantity: Math.max(1, Math.floor(quantity)), status: 'payment_pending' as const, escrowAddress, created_at: now, updated_at: now }
+    const bid = { id: bidId, auctionId, bidderAddress, bidAmount, quantity: qty, status: 'payment_pending' as const, escrowAddress, created_at: now, updated_at: now }
     this.bids.set(bidId, bid)
     const list = this.bidsByAuction.get(auctionId) || []
     list.push(bidId)
     this.bidsByAuction.set(auctionId, list)
     return { escrowAddress, bidId }
   }
-  confirmBidPayment(bidId: string, transactionId: string): { success: boolean } {
+  confirmBidPayment(bidId: string, transactionId: string): { success: boolean; alreadyConfirmed?: boolean } {
     const bid = this.bids.get(bidId)
     if (!bid) throw new Error('Bid not found')
+    
+    // Idempotency: if already confirmed with same txId, return success
+    if (bid.status === 'payment_confirmed' && bid.transactionId === transactionId) {
+      return { success: true, alreadyConfirmed: true };
+    }
+    
+    // Validate state transition: only payment_pending -> payment_confirmed allowed
+    if (bid.status !== 'payment_pending' && bid.status !== 'payment_confirmed') {
+      throw new Error(`Cannot confirm payment for bid in status: ${bid.status}. Expected payment_pending.`);
+    }
+    
+    if (!transactionId || typeof transactionId !== 'string') {
+      throw new Error('Valid transaction ID is required');
+    }
+    
     bid.transactionId = transactionId
     bid.status = 'payment_confirmed'
     bid.updated_at = Math.floor(Date.now() / 1000)
@@ -549,12 +643,23 @@ export class PostgresDutchyDatabase {
   processAuctionSettlement(auctionId: string): { success: boolean; artifacts: Array<{ bidId: string; inscriptionId: string; toAddress: string }> } {
     const auction = this.clearingAuctions.get(auctionId)
     if (!auction) throw new Error('Clearing auction not found')
+    
     const settlement = this.calculateSettlement(auctionId)
     const artifacts: Array<{ bidId: string; inscriptionId: string; toAddress: string }> = []
     let inscriptionIdx = 0
+    
     for (const alloc of settlement.allocations) {
       const bid = this.bids.get(alloc.bidId)
       if (!bid) continue
+      
+      // Enforce: only payment_confirmed bids can be settled
+      if (bid.status !== 'payment_confirmed' && bid.status !== 'settled') {
+        throw new Error(`Cannot settle bid ${bid.id} with status: ${bid.status}. Payment must be confirmed first.`);
+      }
+      
+      // Skip if already settled (idempotency)
+      if (bid.status === 'settled') continue;
+      
       for (let i = 0; i < alloc.quantity && inscriptionIdx < auction.inscription_ids.length; i++) {
         const inscriptionId = auction.inscription_ids[inscriptionIdx++]
         artifacts.push({ bidId: bid.id, inscriptionId: inscriptionId!, toAddress: bid.bidderAddress })
@@ -563,6 +668,7 @@ export class PostgresDutchyDatabase {
       bid.updated_at = Math.floor(Date.now() / 1000)
       this.bids.set(bid.id, bid)
     }
+    
     auction.status = inscriptionIdx >= auction.quantity ? 'sold' : auction.status
     auction.updated_at = Math.floor(Date.now() / 1000)
     this.clearingAuctions.set(auctionId, auction)
