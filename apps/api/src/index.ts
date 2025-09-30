@@ -242,7 +242,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
       const method = request.method
       const path = new URL(request.url).pathname
       // Skip logging for static assets and health checks to reduce noise
-      if (path.match(/\.(css|js|html|ico|png|jpg|svg)$/) || path === '/health') {
+      if (path.match(/\.(css|js|html|ico|png|jpg|svg)$/) || path === '/api/health') {
         return
       }
       logger.request(method, path, {
@@ -254,7 +254,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
       const path = new URL(request.url).pathname
       const status = set.status || 200
       // Skip logging for static assets and health checks
-      if (path.match(/\.(css|js|html|ico|png|jpg|svg)$/) || path === '/health') {
+      if (path.match(/\.(css|js|html|ico|png|jpg|svg)$/) || path === '/api/health') {
         return
       }
       // Note: We don't have access to request start time in this hook,
@@ -274,13 +274,13 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         return new Response('Failed to load index.html', { status: 500, headers: { 'content-type': 'text/plain; charset=utf-8' } })
       }
     })
-    .get('/hello', () => 
+    .get('/api/hello', () => 
       success({ message: helloDutch('World') }),
       {
         response: SuccessResponse(t.Object({ message: t.String() }))
       }
     )
-    .get('/health', async ({ query }) =>
+    .get('/api/health', async ({ query }) =>
       await withNetworkOverride(query?.network as any, async () => {
         const startTime = Date.now()
         let dbConnected = false
@@ -323,45 +323,6 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
     )
     // Listings
     .get(
-      '/auctions',
-      async ({ query }) =>
-        await withNetworkOverride(query?.network as any, async () => {
-          const now = Math.floor(Date.now() / 1000)
-          const list = await (database as any).listAuctions({
-            status: (query.status as any) || undefined,
-            type: (query.type as any) || undefined,
-          })
-          const enriched = list.map((a: any) => {
-            if (a.auction_type === 'single') {
-              const linear = (database as any).calculateCurrentPrice(a, now)
-              const stepped = (database as any).calculatePriceWithIntervals(a, now)
-              return {
-                ...a,
-                pricing: {
-                  currentPriceLinear: linear.currentPrice,
-                  currentPriceStepped: stepped.currentPrice,
-                  at: now,
-                },
-              }
-            }
-            return { ...a, pricing: null }
-          })
-          return success({ network: getBitcoinNetwork(), items: enriched })
-        }),
-      {
-        query: t.Object({
-          status: t.Optional(t.Union([t.Literal('active'), t.Literal('sold'), t.Literal('expired')])),
-          type: t.Optional(t.Union([t.Literal('single'), t.Literal('clearing')])) ,
-          network: t.Optional(t.String()),
-        }),
-        response: SuccessResponse(t.Object({
-          network: t.String(),
-          items: t.Array(ListItemSchema),
-        }))
-      },
-    )
-    // Duplicate under /api for web client
-    .get(
       '/api/auctions',
       async ({ query }) =>
         await withNetworkOverride(query?.network as any, async () => {
@@ -400,7 +361,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
       },
     )
     // Auction details
-    .get('/auction/:auctionId', async ({ params, query }) =>
+    .get('/api/auction/:auctionId', async ({ params, query }) =>
       await withNetworkOverride(query?.network as any, async () => {
         const now = Math.floor(Date.now() / 1000)
         const a = await (database as any).getAuction(params.auctionId)
@@ -443,7 +404,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
       },
     )
     // Pricing endpoints
-    .get('/price/:auctionId', async ({ params, query, set }) =>
+    .get('/api/price/:auctionId', async ({ params, query, set }) =>
       await withNetworkOverride(query?.network as any, async () => {
         const now = Math.floor(Date.now() / 1000)
         const a = await (database as any).getAuction(params.auctionId)
@@ -473,7 +434,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         ])
       },
     )
-    .get('/price/:auctionId/stepped', async ({ params, query, set }) =>
+    .get('/api/price/:auctionId/stepped', async ({ params, query, set }) =>
       await withNetworkOverride(query?.network as any, async () => {
         const now = Math.floor(Date.now() / 1000)
         const a = await (database as any).getAuction(params.auctionId)
@@ -504,7 +465,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
       },
     )
     // Admin endpoints
-    .post('/admin/check-expired', async ({ query }) =>
+    .post('/api/admin/check-expired', async ({ query }) =>
       await withNetworkOverride(query?.network as any, async () => {
         const result = await (database as any).checkAndUpdateExpiredAuctions()
         return success({ ...result, network: getBitcoinNetwork() })
@@ -514,7 +475,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         response: SuccessResponse(UnknownRecord)
       },
     )
-    .post('/auction/:auctionId/status', async ({ params, body, query, set }) =>
+    .post('/api/auction/:auctionId/status', async ({ params, body, query, set }) =>
       await withNetworkOverride(query?.network as any, async () => {
         const allowed = ['active', 'sold', 'expired']
         if (!allowed.includes((body as any).status)) {
@@ -542,7 +503,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
       },
     )
     // Clearing price Dutch auction endpoints
-    .post('/clearing/create-auction', async ({ body, set }) => {
+    .post('/api/clearing/create-auction', async ({ body, set }) => {
       try {
         const {
           auctionId,
@@ -597,7 +558,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         ErrorResponse
       ])
     })
-    .post('/clearing/place-bid', async ({ body, set }) => {
+    .post('/api/clearing/place-bid', async ({ body, set }) => {
       try {
         const { auctionId, bidderAddress, quantity } = body
         if (!auctionId || !bidderAddress) {
@@ -622,7 +583,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         ErrorResponse
       ])
     })
-    .get('/clearing/status/:auctionId', ({ params, set }) => {
+    .get('/api/clearing/status/:auctionId', ({ params, set }) => {
       try {
         const res = (database as any).getClearingAuctionStatus(String(params.auctionId))
         return success(res)
@@ -637,7 +598,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         ErrorResponse
       ])
     })
-    .get('/clearing/bids/:auctionId', ({ params, set }) => {
+    .get('/api/clearing/bids/:auctionId', ({ params, set }) => {
       try {
         const res = (database as any).getAuctionBids(String(params.auctionId))
         return success(res)
@@ -652,7 +613,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         ErrorResponse
       ])
     })
-    .get('/clearing/settlement/:auctionId', ({ params, set }) => {
+    .get('/api/clearing/settlement/:auctionId', ({ params, set }) => {
       try {
         const res = (database as any).calculateSettlement(String(params.auctionId))
         return success(res)
@@ -667,7 +628,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         ErrorResponse
       ])
     })
-    .post('/clearing/mark-settled', ({ body, set }) => {
+    .post('/api/clearing/mark-settled', ({ body, set }) => {
       try {
         const { auctionId, bidIds } = body
         if (!auctionId || !Array.isArray(bidIds)) {
@@ -691,7 +652,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         ErrorResponse
       ])
     })
-    .post('/clearing/create-bid-payment', ({ body, set }) => {
+    .post('/api/clearing/create-bid-payment', ({ body, set }) => {
       try {
         const { auctionId, bidderAddress, bidAmount, quantity } = body
         if (!auctionId || !bidderAddress || bidAmount == null) {
@@ -717,7 +678,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         ErrorResponse
       ])
     })
-    .post('/clearing/confirm-bid-payment', ({ body, set }) => {
+    .post('/api/clearing/confirm-bid-payment', ({ body, set }) => {
       try {
         const { bidId, transactionId } = body
         if (!bidId || !transactionId) {
@@ -741,7 +702,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         ErrorResponse
       ])
     })
-    .post('/clearing/process-settlement', ({ body, set }) => {
+    .post('/api/clearing/process-settlement', ({ body, set }) => {
       try {
         const { auctionId } = body
         if (!auctionId) {
@@ -764,7 +725,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         ErrorResponse
       ])
     })
-    .get('/clearing/bid-payment-status/:bidId', ({ params, set }) => {
+    .get('/api/clearing/bid-payment-status/:bidId', ({ params, set }) => {
       try {
         const res = (database as any).getBidDetails(String(params.bidId))
         return success(res)
@@ -779,7 +740,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         ErrorResponse
       ])
     })
-    .get('/clearing/auction-payments/:auctionId', ({ params, set }) => {
+    .get('/api/clearing/auction-payments/:auctionId', ({ params, set }) => {
       try {
         const res = (database as any).getAuctionBidsWithPayments(String(params.auctionId))
         return success(res)
@@ -795,7 +756,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
       ])
     })
     // Demo helper
-    .post('/demo/create-clearing-auction', ({ body, set }) => {
+    .post('/api/demo/create-clearing-auction', ({ body, set }) => {
       try {
         const id = String(body?.auctionId ?? `demo_${Date.now()}`)
         const inscriptionIds = body?.inscriptionIds ?? ['insc-0', 'insc-1', 'insc-2']
@@ -834,60 +795,60 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
     })
 
     // Recovery endpoints (proxy to in-process service db)
-    .get('/recovery/auction/:auctionId', ({ params }) => success(svcDb.recoverAuctionFromSeed(params.auctionId)))
-    .get('/recovery/all', () => success(svcDb.recoverAllAuctionsFromSeed()))
-    .get('/recovery/verify/:auctionId', ({ params }) => success(svcDb.verifyAuctionRecovery(params.auctionId)))
+    .get('/api/recovery/auction/:auctionId', ({ params }) => success(svcDb.recoverAuctionFromSeed(params.auctionId)))
+    .get('/api/recovery/all', () => success(svcDb.recoverAllAuctionsFromSeed()))
+    .get('/api/recovery/verify/:auctionId', ({ params }) => success(svcDb.verifyAuctionRecovery(params.auctionId)))
     .post('/api/recovery/simulate-disaster', () => success(svcDb.simulateDisasterRecovery()))
     .get('/api/recovery/status', () => success(svcDb.getRecoveryStatus()))
     .get('/api/recovery/documentation', () => success({
       title: 'Disaster Recovery Procedures',
       version: 1,
       procedures: [
-        { step: 1, action: 'Verify master seed presence', endpoint: '/seed/status' },
-        { step: 2, action: 'Recover specific auction from seed', endpoint: '/recovery/auction/:auctionId' },
-        { step: 3, action: 'Recover all auctions from seed', endpoint: '/recovery/all' },
-        { step: 4, action: 'Verify recovery integrity for auction', endpoint: '/recovery/verify/:auctionId' },
-        { step: 5, action: 'Monitor transactions and reconcile', endpoint: '/admin/update-all-from-blockchain' }
+        { step: 1, action: 'Verify master seed presence', endpoint: '/api/seed/status' },
+        { step: 2, action: 'Recover specific auction from seed', endpoint: '/api/recovery/auction/:auctionId' },
+        { step: 3, action: 'Recover all auctions from seed', endpoint: '/api/recovery/all' },
+        { step: 4, action: 'Verify recovery integrity for auction', endpoint: '/api/recovery/verify/:auctionId' },
+        { step: 5, action: 'Monitor transactions and reconcile', endpoint: '/api/admin/update-all-from-blockchain' }
       ]
     }))
     // Seed endpoints
-    .post('/seed/validate', ({ body }) => success(svcDb.validateSeedPhrase(body?.seed)),
+    .post('/api/seed/validate', ({ body }) => success(svcDb.validateSeedPhrase(body?.seed)),
       {
         body: t.Object({ seed: t.Optional(t.String()) }),
       response: SuccessResponse(UnknownRecord)
       }
     )
-    .post('/seed/import', ({ body }) => success(svcDb.importMasterSeed(body?.seed)),
+    .post('/api/seed/import', ({ body }) => success(svcDb.importMasterSeed(body?.seed)),
       {
         body: t.Object({ seed: t.Optional(t.String()) }),
       response: SuccessResponse(UnknownRecord)
       }
     )
-    .post('/seed/rotate', ({ body }) => success(svcDb.rotateMasterSeed(body?.newSeed)),
+    .post('/api/seed/rotate', ({ body }) => success(svcDb.rotateMasterSeed(body?.newSeed)),
       {
         body: t.Object({ newSeed: t.Optional(t.String()) }),
       response: SuccessResponse(UnknownRecord)
       }
     )
-    .get('/seed/backup-with-warnings', () => success(svcDb.getMasterSeedWithWarnings()))
-    .get('/seed/status', () => success(svcDb.getSeedManagementStatus()))
+    .get('/api/seed/backup-with-warnings', () => success(svcDb.getMasterSeedWithWarnings()))
+    .get('/api/seed/status', () => success(svcDb.getSeedManagementStatus()))
     // Security minimal (not used by tests but harmless)
-    .get('/security/audit-logs', ({ query }) => success(svcDb.getAuditLogs(query?.limit ? Number(query.limit) : undefined, query?.operation as string | undefined)))
-    .post('/security/test-encryption', ({ body }) => success(svcDb.testEncryptionRoundTrip(body?.plaintext)),
+    .get('/api/security/audit-logs', ({ query }) => success(svcDb.getAuditLogs(query?.limit ? Number(query.limit) : undefined, query?.operation as string | undefined)))
+    .post('/api/security/test-encryption', ({ body }) => success(svcDb.testEncryptionRoundTrip(body?.plaintext)),
       {
         body: t.Object({ plaintext: t.Optional(t.String()) }),
       response: SuccessResponse(UnknownRecord)
       }
     )
     // Fee endpoints
-    .get('/fees/rates', ({ query }) =>
+    .get('/api/fees/rates', ({ query }) =>
       withNetworkOverride(query?.network as any, async () => {
         const network = (query?.network as string) || getBitcoinNetwork()
         const rates = await database.getFeeRates(network)
         return success({ network: getBitcoinNetwork(), rates })
       }),
     )
-    .post('/fees/calculate', async ({ body }) => {
+    .post('/api/fees/calculate', async ({ body }) => {
       const network = body?.network || getBitcoinNetwork()
       const category = (body?.category || 'medium') as 'low' | 'medium' | 'high'
       const size = Number(body?.size ?? 0)
@@ -904,7 +865,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
       }),
       response: SuccessResponse(UnknownRecord)
     })
-    .get('/fees/estimation/:transactionType', ({ params, query }) =>
+    .get('/api/fees/estimation/:transactionType', ({ params, query }) =>
       withNetworkOverride(query?.network as any, async () => {
         const network = (query?.network as string) || getBitcoinNetwork()
         const rates = await database.getFeeRates(network)
@@ -917,7 +878,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         return success({ transactionType: params.transactionType, network: getBitcoinNetwork(), options })
       }),
     )
-    .post('/fees/escalate', ({ body }) => {
+    .post('/api/fees/escalate', ({ body }) => {
       const currentRate = Number(body?.currentRate ?? 1)
       const bumpPercent = Number(body?.bumpPercent ?? 20)
       const newRate = Math.ceil(currentRate * (1 + bumpPercent / 100))
@@ -930,16 +891,16 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
       }),
       response: SuccessResponse(UnknownRecord)
     })
-    .post('/fees/test-calculations', () => success({ ok: true }))
-    .get('/auction/:auctionId/fee-info', ({ params, query }) => success(svcDb.getAuctionFeeInfo(params.auctionId, (query?.network as string) || getBitcoinNetwork())))
+    .post('/api/fees/test-calculations', () => success({ ok: true }))
+    .get('/api/auction/:auctionId/fee-info', ({ params, query }) => success(svcDb.getAuctionFeeInfo(params.auctionId, (query?.network as string) || getBitcoinNetwork())))
     // Monitoring endpoints
-    .get('/transaction/:transactionId/status', ({ params, query }) => success(svcDb.monitorTransaction(params.transactionId, (query?.auctionId as string) || undefined)))
-    .get('/transaction/:transactionId/monitor', ({ params, query }) => success(svcDb.monitorTransactionReal(params.transactionId, (query?.auctionId as string) || undefined, (query?.network as string) || undefined)))
-    .post('/auction/:auctionId/update-from-blockchain', ({ params }) => success(svcDb.updateAuctionFromBlockchain(params.auctionId)), { params: t.Object({ auctionId: t.String() }) })
-    .post('/admin/update-all-from-blockchain', () => success(svcDb.updateAllAuctionsFromBlockchain()))
-    .get('/admin/detect-failed-transactions', () => success(svcDb.detectFailedTransactions()))
-    .get('/auction/:auctionId/transaction-history', ({ params }) => success(svcDb.getTransactionHistory(params.auctionId)))
-    .post('/transaction/handle-failure', ({ body }) => success(svcDb.handleTransactionFailure(String(body?.transactionId ?? ''), String(body?.reason ?? ''))),
+    .get('/api/transaction/:transactionId/status', ({ params, query }) => success(svcDb.monitorTransaction(params.transactionId, (query?.auctionId as string) || undefined)))
+    .get('/api/transaction/:transactionId/monitor', ({ params, query }) => success(svcDb.monitorTransactionReal(params.transactionId, (query?.auctionId as string) || undefined, (query?.network as string) || undefined)))
+    .post('/api/auction/:auctionId/update-from-blockchain', ({ params }) => success(svcDb.updateAuctionFromBlockchain(params.auctionId)), { params: t.Object({ auctionId: t.String() }) })
+    .post('/api/admin/update-all-from-blockchain', () => success(svcDb.updateAllAuctionsFromBlockchain()))
+    .get('/api/admin/detect-failed-transactions', () => success(svcDb.detectFailedTransactions()))
+    .get('/api/auction/:auctionId/transaction-history', ({ params }) => success(svcDb.getTransactionHistory(params.auctionId)))
+    .post('/api/transaction/handle-failure', ({ body }) => success(svcDb.handleTransactionFailure(String(body?.transactionId ?? ''), String(body?.reason ?? ''))),
       {
         body: t.Object({
           transactionId: t.Optional(t.String()),
@@ -968,7 +929,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
     })
 
     // Additional endpoints from feature branch (auction creation and escrow)
-    .post('/create-auction', async ({ body, set }) => {
+    .post('/api/create-auction', async ({ body, set }) => {
       try {
         const {
           asset,
@@ -1054,10 +1015,8 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         // AUCTION_ENCRYPTION_PASSWORD must be set in environment.
         const encryptionPassword = Bun.env.AUCTION_ENCRYPTION_PASSWORD
         if (!encryptionPassword) {
-          return new Response(JSON.stringify({ error: 'AUCTION_ENCRYPTION_PASSWORD environment variable not set' }), {
-            status: 500,
-            headers: { 'content-type': 'application/json' },
-          })
+          set.status = 500
+          return error('AUCTION_ENCRYPTION_PASSWORD environment variable not set', 'INTERNAL_ERROR')
         }
         
         const { keyPair, address } = await database.generateAuctionKeyPair(auctionId, { password: encryptionPassword })
@@ -1150,61 +1109,39 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         ErrorResponse
       ])
     })
-    .post('/escrow/verify-ownership', ({ body }) => {
+    .post('/api/escrow/verify-ownership', ({ body }) => {
       const { inscriptionId, ownerAddress } = body
       return success(database.verifyInscriptionOwnership({ inscriptionId, ownerAddress }))
     }, { 
       body: t.Object({ inscriptionId: t.String(), ownerAddress: t.String() }),
       response: SuccessResponse(UnknownRecord)
     })
-    .post('/escrow/create-psbt', ({ body }) => {
+    .post('/api/escrow/create-psbt', ({ body }) => {
       const { auctionId, inscriptionId, ownerAddress } = body
       return success(database.createInscriptionEscrowPSBT({ auctionId, inscriptionId, ownerAddress }))
     }, { 
       body: t.Object({ auctionId: t.String(), inscriptionId: t.String(), ownerAddress: t.String() }),
       response: SuccessResponse(UnknownRecord)
     })
-    .get('/escrow/monitor/:auctionId/:inscriptionId', ({ params }) => {
+    .get('/api/escrow/monitor/:auctionId/:inscriptionId', ({ params }) => {
       const { auctionId, inscriptionId } = params
       return success(database.monitorInscriptionEscrow(String(auctionId), String(inscriptionId)))
     })
-    .post('/escrow/update-status', ({ body }) => {
+    .post('/api/escrow/update-status', ({ body }) => {
       const { auctionId, status, details } = body
       return success(database.updateInscriptionStatus({ auctionId, status, details }))
     }, { 
       body: t.Object({ auctionId: t.String(), status: t.String(), details: t.Optional(UnknownRecord) }),
       response: SuccessResponse(t.Object({ ok: t.Boolean(), status: t.String() }))
     })
-    .get('/escrow/status/:auctionId', ({ params }) => {
+    .get('/api/escrow/status/:auctionId', ({ params }) => {
       const { auctionId } = params
       return success(database.getInscriptionEscrowStatus(String(auctionId)))
     })
-    .post('/admin/check-escrow-timeouts', () => {
+    .post('/api/admin/check-escrow-timeouts', () => {
       return success(database.checkEscrowTimeouts())
     })
 
-    // Forward all /api/* requests to existing handlers without the /api prefix
-    // This enables a unified /api prefix for all endpoints without refactoring every route.
-    .all('/api/*', async ({ request }): Promise<Response> => {
-      const url = new URL(request.url)
-      const forwarded = new URL(request.url)
-      const stripped = url.pathname.replace(/^\/api\/?/, '/')
-      forwarded.pathname = stripped === '//' ? '/' : stripped
-      const method = request.method.toUpperCase()
-      let body: BodyInit | null | undefined
-      if (method !== 'GET' && method !== 'HEAD') {
-        try {
-          const buf = await request.arrayBuffer()
-          body = buf as BodyInit
-        } catch {}
-      }
-      const forwardedReq = new Request(forwarded.toString(), {
-        method,
-        headers: request.headers,
-        body,
-      })
-      return app.handle(forwardedReq)
-    })
 
     // Serve static assets from Astro's dist for css/js/html requests
     .get('/*', async ({ request }) => {
