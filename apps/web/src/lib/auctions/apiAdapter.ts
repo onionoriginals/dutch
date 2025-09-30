@@ -1,7 +1,9 @@
 import { DateTime } from 'luxon'
 import type { AuctionsQuery, AuctionsResult, AuctionSummary } from './common'
 
-const API_BASE: string = ((import.meta as any)?.env?.PUBLIC_API_BASE || 'http://localhost:3000') + '/api'
+// When deployed, the API serves the web app, so we use relative URLs.
+// In development, PUBLIC_API_BASE can point to the separate API server.
+const API_BASE: string = ((import.meta as any)?.env?.PUBLIC_API_BASE || '') + '/api'
 
 type ApiAuction = {
   id: string
