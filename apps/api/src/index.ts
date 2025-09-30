@@ -1149,44 +1149,59 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         const url = new URL(request.url)
         let pathname: string = url.pathname
         
-        // If it's the root or a path without extension, serve index.html (SPA fallback)
         const cleanPath: string = String(pathname).split('?')[0] || ''
         const originalExt = (cleanPath.split('.').pop() || '').toLowerCase()
         const hasExtension = cleanPath.includes('.') && originalExt.length > 0
         
-        if (!hasExtension || pathname === '/') {
-          pathname = '/index.html'
-        }
-        
-        // Only serve known static file types
+        // Only serve known static file types if there's an extension
         const allowedExtensions = ['css', 'js', 'html', 'json', 'svg', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'woff', 'woff2', 'ttf', 'eot']
         if (hasExtension && !allowedExtensions.includes(originalExt)) {
           return new Response('Not Found', { status: 404 })
         }
         
         const distDir = new URL('../../web/dist/', import.meta.url)
-        const fileUrl = new URL(pathname.replace(/^\//, ''), distDir)
-        const file = Bun.file(fileUrl)
         
-        if (!(await file.exists())) {
-          // SPA fallback: if file not found and it's not an API route, serve index.html
-          if (!pathname.startsWith('/api/')) {
-            const indexUrl = new URL('index.html', distDir)
-            const indexFile = Bun.file(indexUrl)
-            if (await indexFile.exists()) {
-              return new Response(indexFile, { 
-                headers: { 
-                  'content-type': 'text/html; charset=utf-8',
-                  'cache-control': 'no-cache'
-                } 
-              })
+        // Try multiple possible file locations for pages without extensions
+        let file: any = null
+        let finalPath = pathname
+        
+        if (!hasExtension || pathname === '/') {
+          // For paths without extensions, try multiple locations:
+          // 1. /path/index.html (Astro directory index)
+          // 2. /path.html (Astro page)
+          // 3. /index.html (fallback)
+          const candidates = pathname === '/' 
+            ? ['/index.html']
+            : [
+                `${pathname}/index.html`,  // e.g., /auctions/index.html
+                `${pathname}.html`,         // e.g., /auctions.html
+                '/index.html'               // SPA fallback
+              ]
+          
+          for (const candidate of candidates) {
+            const candidateUrl = new URL(candidate.replace(/^\//, ''), distDir)
+            const candidateFile = Bun.file(candidateUrl)
+            if (await candidateFile.exists()) {
+              file = candidateFile
+              finalPath = candidate
+              break
             }
           }
-          return new Response('Not Found', { status: 404 })
+          
+          if (!file) {
+            return new Response('Not Found', { status: 404 })
+          }
+        } else {
+          // Has extension, try the exact path
+          const fileUrl = new URL(pathname.replace(/^\//, ''), distDir)
+          file = Bun.file(fileUrl)
+          
+          if (!(await file.exists())) {
+            return new Response('Not Found', { status: 404 })
+          }
         }
         
         // Determine content type based on the ACTUAL file being served (after rewrite)
-        const finalPath = String(pathname).split('?')[0] || ''
         const ext = (finalPath.split('.').pop() || '').toLowerCase()
         
         const contentTypeMap: Record<string, string> = {
