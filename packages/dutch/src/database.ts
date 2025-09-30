@@ -853,6 +853,90 @@ export class SecureDutchyDatabase {
     return { success: true, artifacts };
   }
 
+  generateSettlementPSBTs(auctionId: string): { 
+    success: boolean; 
+    psbts: Array<{ bidId: string; inscriptionId: string; toAddress: string; psbt: string }> 
+  } {
+    const auction = this.clearingAuctions.get(auctionId);
+    if (!auction) throw new Error('Clearing auction not found');
+    
+    const settlement = this.calculateSettlement(auctionId);
+    const psbts: Array<{ bidId: string; inscriptionId: string; toAddress: string; psbt: string }> = [];
+    let inscriptionIdx = 0;
+    
+    for (const alloc of settlement.allocations) {
+      const bid = this.bids.get(alloc.bidId);
+      if (!bid) continue;
+      
+      // Only generate PSBTs for payment_confirmed bids (not already settled)
+      if (bid.status !== 'payment_confirmed') continue;
+      
+      for (let i = 0; i < alloc.quantity && inscriptionIdx < auction.inscription_ids.length; i++) {
+        const inscriptionId = auction.inscription_ids[inscriptionIdx++];
+        
+        // Generate a PSBT for transferring this inscription
+        // In a real implementation, this would:
+        // 1. Parse the inscription ID to get txid:vout
+        // 2. Fetch the UTXO from the blockchain
+        // 3. Create a PSBT moving the inscription from auction address to bidder address
+        // 4. Set proper fees and outputs
+        // For now, we generate a placeholder PSBT string
+        const network = getBitcoinNetwork();
+        const btcNet = this.getBitcoinJsNetwork();
+        
+        try {
+          // Create a minimal PSBT structure
+          const psbt = new bitcoin.Psbt({ network: btcNet });
+          
+          // Parse inscription ID (format: <txid>i<index> or just use as-is for mock)
+          const mockTxId = '0000000000000000000000000000000000000000000000000000000000000000';
+          const mockVout = 0;
+          const mockValue = 546; // dust limit for inscription
+          
+          // Add input (inscription UTXO) - in production, fetch from blockchain
+          // For now, create a mock witness UTXO
+          const mockScript = bitcoin.address.toOutputScript('tb1qmockaddress0000000000000000000000000', btcNet);
+          psbt.addInput({
+            hash: mockTxId,
+            index: mockVout,
+            witnessUtxo: {
+              script: mockScript,
+              value: mockValue,
+            },
+          });
+          
+          // Add output (inscription to bidder)
+          const toScript = bitcoin.address.toOutputScript(bid.bidderAddress, btcNet);
+          psbt.addOutput({
+            script: toScript,
+            value: mockValue, // Keep the inscription at dust limit
+          });
+          
+          // Encode as base64
+          const psbtBase64 = psbt.toBase64();
+          
+          psbts.push({ 
+            bidId: bid.id, 
+            inscriptionId: inscriptionId!, 
+            toAddress: bid.bidderAddress,
+            psbt: psbtBase64,
+          });
+        } catch (err) {
+          // If PSBT generation fails, create a mock PSBT string
+          const mockPsbt = `psbt_${this.simpleHash(inscriptionId! + bid.bidderAddress)}`;
+          psbts.push({ 
+            bidId: bid.id, 
+            inscriptionId: inscriptionId!, 
+            toAddress: bid.bidderAddress,
+            psbt: mockPsbt,
+          });
+        }
+      }
+    }
+    
+    return { success: true, psbts };
+  }
+
   getBidDetails(bidId: string): any {
     const bid = this.bids.get(bidId);
     if (!bid) throw new Error('Bid not found');

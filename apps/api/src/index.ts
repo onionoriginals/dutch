@@ -709,8 +709,19 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
           set.status = 400
           return error('auctionId required', 'VALIDATION_ERROR')
         }
-        const res = (database as any).processAuctionSettlement(String(auctionId))
-        return success(res)
+        
+        // Generate PSBTs for inscription transfers
+        const psbtResult = (database as any).generateSettlementPSBTs(String(auctionId))
+        
+        // Also get the settlement details for context
+        const settlement = (database as any).calculateSettlement(String(auctionId))
+        
+        return success({
+          auctionId: String(auctionId),
+          clearingPrice: settlement.clearingPrice,
+          allocations: settlement.allocations,
+          psbts: psbtResult.psbts,
+        })
       } catch (err: any) {
         set.status = 500
         return error(err?.message || 'internal_error', 'INTERNAL_ERROR')
