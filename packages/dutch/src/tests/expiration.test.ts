@@ -12,7 +12,7 @@ describe('Automatic expiration handling', () => {
 
   it('marks auctions expired when end_time passed', async () => {
     const { keyPair, address } = await db.generateAuctionKeyPair('exp1');
-    db.storeAuction({
+    await db.storeAuction({
       id: 'exp1',
       inscription_id: 'insc-exp',
       start_price: 10_000,

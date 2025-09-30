@@ -13,7 +13,7 @@ describe('Buy-now flow (single auction)', () => {
   it('executes buy-now and marks auction sold', async () => {
     // Create a minimal single auction directly using storeAuction
     const { keyPair, address } = await db.generateAuctionKeyPair('s1');
-    db.storeAuction({
+    await db.storeAuction({
       id: 's1',
       inscription_id: 'insc-s1-0',
       start_price: 50_000,
