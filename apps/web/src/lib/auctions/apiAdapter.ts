@@ -61,8 +61,8 @@ export async function queryAuctions(params: AuctionsQuery = {}): Promise<Auction
   const url = `${API_BASE}/auctions?${qs.toString()}`
   const resp = await fetch(url)
   if (!resp.ok) throw new Error(`API error ${resp.status}`)
-  const json = await resp.json() as { ok?: boolean; items?: ApiAuction[] }
-  const rawItems = (json.items || []).map(normalize)
+  const json = await resp.json() as { ok?: boolean; data?: { items?: ApiAuction[] } }
+  const rawItems = (json.data?.items || []).map(normalize)
 
   // Client-side filters/sorts for fields not supported server-side yet
   let items = rawItems
@@ -110,10 +110,10 @@ export async function queryAuctions(params: AuctionsQuery = {}): Promise<Auction
 export async function fetchAuction(id: string): Promise<{ auction: AuctionSummary; pricing?: { currentPriceLinear?: number; currentPriceStepped?: number } } | null> {
   const resp = await fetch(`${API_BASE}/auction/${encodeURIComponent(id)}`)
   if (!resp.ok) return null
-  const json = await resp.json() as any
-  if (!json?.ok || !json?.auction) return null
-  const summary = normalize(json.auction as ApiAuction)
-  return { auction: summary, pricing: json.pricing }
+  const json = await resp.json() as { ok?: boolean; data?: { auction?: ApiAuction; pricing?: { currentPriceLinear?: number; currentPriceStepped?: number } } }
+  if (!json?.ok || !json?.data?.auction) return null
+  const summary = normalize(json.data.auction as ApiAuction)
+  return { auction: summary, pricing: json.data.pricing }
 }
 
 
