@@ -2,6 +2,8 @@
 import '../styles/globals.css'
 import DemoDutchEditor from '../components/auction/DemoDutchEditor'
 import LiveAuctionsSection from '../components/auction/LiveAuctionsSection'
+import WalletButton from '../components/ui/WalletButton'
+import { WalletProvider } from '../lib/wallet/WalletContext'
 ---
 <html>
   <head>
@@ -10,19 +12,21 @@ import LiveAuctionsSection from '../components/auction/LiveAuctionsSection'
     <title>Originals Auctions</title>
   </head>
   <body class="min-h-screen bg-gray-50 dark:bg-gray-950">
-    <header class="border-b bg-white/80 backdrop-blur dark:border-gray-900 dark:bg-gray-900/80">
-      <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-        <a href="/" class="flex items-center gap-2 text-lg font-semibold">
-          <span class="inline-block h-6 w-6 rounded bg-black dark:bg-white"></span>
-          <span>Originals</span>
-        </a>
-        <nav class="flex items-center gap-3 text-sm">
-          <a href="/auctions" class="text-gray-700 hover:text-black dark:text-gray-300 dark:hover:text-white">Auctions</a>
-          <a href="/docs/auction-type" class="text-gray-700 hover:text-black dark:text-gray-300 dark:hover:text-white">Docs</a>
-          <a href="https://github.com" class="text-gray-700 hover:text-black dark:text-gray-300 dark:hover:text-white" rel="noreferrer" target="_blank">GitHub</a>
-        </nav>
-      </div>
-    </header>
+    <WalletProvider client:only="react">
+      <header class="border-b bg-white/80 backdrop-blur dark:border-gray-900 dark:bg-gray-900/80">
+        <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
+          <a href="/" class="flex items-center gap-2 text-lg font-semibold">
+            <span class="inline-block h-6 w-6 rounded bg-black dark:bg-white"></span>
+            <span>Originals</span>
+          </a>
+          <nav class="flex items-center gap-3 text-sm">
+            <a href="/auctions" class="text-gray-700 hover:text-black dark:text-gray-300 dark:hover:text-white">Auctions</a>
+            <a href="/docs/auction-type" class="text-gray-700 hover:text-black dark:text-gray-300 dark:hover:text-white">Docs</a>
+            <a href="https://github.com" class="text-gray-700 hover:text-black dark:text-gray-300 dark:hover:text-white" rel="noreferrer" target="_blank">GitHub</a>
+            <WalletButton client:only="react" />
+          </nav>
+        </div>
+      </header>
 
     <main>
        <!-- Quick Actions -->
@@ -96,7 +100,9 @@ import LiveAuctionsSection from '../components/auction/LiveAuctionsSection'
       </section>
     </main>
 
-    <footer class="border-t py-6 text-center text-sm text-muted-foreground">
-      <div class="mx-auto max-w-6xl px-4">© {new Date().getFullYear()} Originals. All rights reserved.</div>
-    </footer>
-  </html>
+      <footer class="border-t py-6 text-center text-sm text-muted-foreground">
+        <div class="mx-auto max-w-6xl px-4">© {new Date().getFullYear()} Originals. All rights reserved.</div>
+      </footer>
+    </WalletProvider>
+  </body>
+</html>
