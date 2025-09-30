@@ -270,6 +270,45 @@ export class PostgresDutchyDatabase {
     }
   }
 
+  // Key/address derivation — match API of SQLite class
+  async generateAuctionKeyPair(
+    auctionId: string,
+    opts?: { addressType?: 'p2wpkh' | 'p2tr'; password?: string }
+  ): Promise<{ keyPair: { privateKeyHex: string }; address: string }> {
+    const addressType = opts?.addressType || 'p2wpkh'
+    const root = await this.getRootNode(opts?.password)
+    const index = this.hashToUint32(auctionId)
+    const network = getBitcoinNetwork()
+    const purpose = addressType === 'p2tr' ? 86 : 84
+    const coin = network === 'mainnet' ? 0 : 1
+    const path = `m/${purpose}'/${coin}'/0'/0/${index}`
+    const child = (root as any).derivePath(path)
+    const privateKeyHex = toHex(child.privateKey!)
+    const btcNet = this.getBitcoinJsNetwork()
+    let address: string
+    if (addressType === 'p2tr') {
+      const pub = Buffer.isBuffer(child.publicKey) ? child.publicKey : Buffer.from(child.publicKey)
+      const xOnly = Buffer.from(pub.slice(1, 33))
+      const p2tr = bitcoin.payments.p2tr({ internalPubkey: xOnly, network: btcNet })
+      address = p2tr.address!
+    } else {
+      const pub = Buffer.isBuffer(child.publicKey) ? child.publicKey : Buffer.from(child.publicKey)
+      const p2wpkh = bitcoin.payments.p2wpkh({ pubkey: pub, network: btcNet })
+      address = p2wpkh.address!
+    }
+    return { keyPair: { privateKeyHex }, address }
+  }
+
+  private hashToUint32(input: string): number {
+    let h1 = 0x811c9dc5
+    for (let i = 0; i < input.length; i++) {
+      h1 ^= input.charCodeAt(i)
+      h1 = Math.imul(h1, 0x01000193)
+      h1 >>>= 0
+    }
+    return h1 % 0x7fffffff
+  }
+
   async listAuctions(options?: { status?: SingleAuction['status'] | ClearingAuction['status']; type?: 'single' | 'clearing' }): Promise<Array<(SingleAuction & { auction_type: 'single' }) | (ClearingAuction & { auction_type: 'clearing' })>> {
     const results: Array<any> = []
     if (!options?.type || options.type === 'single') {

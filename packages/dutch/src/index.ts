@@ -6,6 +6,7 @@ export const version = '0.1.0'
 
 import { SecureDutchyDatabase as SecureDutchyDatabaseType } from './database'
 // Note: Do not statically import the Postgres implementation here to avoid bundling it in browser builds
+import { createRequire } from 'module'
 export { computeSchedule, priceAtTime } from './schedule'
 export type { DecayType, ScheduleInput, NormalizedSchedule, SchedulePoint } from './schedule'
 
@@ -16,7 +17,8 @@ export function getDb(dbPath: string = ((globalThis as any).Bun?.env?.DATABASE_P
   const databaseUrl = (globalThis as any).Bun?.env?.DATABASE_URL ?? (globalThis as any).process?.env?.DATABASE_URL
   if (databaseUrl) {
     try {
-      const mod = requireDynamic('./database.pg') as any
+      const require = createRequire(import.meta.url)
+      const mod = require('./database.pg') as any
       if (mod?.PostgresDutchyDatabase) {
         const pg = new mod.PostgresDutchyDatabase(String(databaseUrl))
         Promise.resolve(pg.initialize?.()).catch(() => {})
@@ -27,13 +29,6 @@ export function getDb(dbPath: string = ((globalThis as any).Bun?.env?.DATABASE_P
   }
   _db = new SecureDutchyDatabaseType(dbPath)
   return _db
-}
-
-// Tiny runtime helper to avoid static import in bundlers
-function requireDynamic(path: string): unknown {
-  // eslint-disable-next-line @typescript-eslint/no-implied-eval
-  const fn = new Function('p', 'return import(p)')
-  return (fn as any)(path)
 }
 
 export const db = getDb()
