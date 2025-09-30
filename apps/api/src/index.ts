@@ -822,25 +822,76 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
       try {
         const url = new URL(request.url)
         let pathname: string = url.pathname
-        if (pathname === '/') pathname = '/index.html'
+        
+        // If it's the root or a path without extension, serve index.html (SPA fallback)
         const cleanPath: string = String(pathname).split('?')[0] || ''
         const ext = (cleanPath.split('.').pop() || '').toLowerCase()
-        if (!['css', 'js', 'html'].includes(ext)) {
+        const hasExtension = cleanPath.includes('.') && ext.length > 0
+        
+        if (!hasExtension || pathname === '/') {
+          pathname = '/index.html'
+        }
+        
+        // Only serve known static file types
+        const allowedExtensions = ['css', 'js', 'html', 'json', 'svg', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'woff', 'woff2', 'ttf', 'eot']
+        if (hasExtension && !allowedExtensions.includes(ext)) {
           return new Response('Not Found', { status: 404 })
         }
+        
         const distDir = new URL('../../web/dist/', import.meta.url)
-        const fileUrl = new URL(cleanPath.replace(/^\//, ''), distDir)
+        const fileUrl = new URL(pathname.replace(/^\//, ''), distDir)
         const file = Bun.file(fileUrl)
+        
         if (!(await file.exists())) {
+          // SPA fallback: if file not found and it's not an API route, serve index.html
+          if (!pathname.startsWith('/api/')) {
+            const indexUrl = new URL('index.html', distDir)
+            const indexFile = Bun.file(indexUrl)
+            if (await indexFile.exists()) {
+              return new Response(indexFile, { 
+                headers: { 
+                  'content-type': 'text/html; charset=utf-8',
+                  'cache-control': 'no-cache'
+                } 
+              })
+            }
+          }
           return new Response('Not Found', { status: 404 })
         }
-        const contentType = ext === 'css'
-          ? 'text/css; charset=utf-8'
-          : ext === 'js'
-            ? 'application/javascript; charset=utf-8'
-            : 'text/html; charset=utf-8'
-        return new Response(file, { headers: { 'content-type': contentType } })
-      } catch {
+        
+        // Determine content type
+        const contentTypeMap: Record<string, string> = {
+          'css': 'text/css; charset=utf-8',
+          'js': 'application/javascript; charset=utf-8',
+          'json': 'application/json; charset=utf-8',
+          'html': 'text/html; charset=utf-8',
+          'svg': 'image/svg+xml',
+          'png': 'image/png',
+          'jpg': 'image/jpeg',
+          'jpeg': 'image/jpeg',
+          'gif': 'image/gif',
+          'webp': 'image/webp',
+          'ico': 'image/x-icon',
+          'woff': 'font/woff',
+          'woff2': 'font/woff2',
+          'ttf': 'font/ttf',
+          'eot': 'application/vnd.ms-fontobject'
+        }
+        const contentType = contentTypeMap[ext] || 'application/octet-stream'
+        
+        // Set cache headers based on file type
+        const cacheControl = ['css', 'js', 'woff', 'woff2', 'ttf', 'eot', 'svg', 'png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext)
+          ? 'public, max-age=31536000, immutable' // 1 year for assets with hashed filenames
+          : 'no-cache' // No cache for HTML to support updates
+        
+        return new Response(file, { 
+          headers: { 
+            'content-type': contentType,
+            'cache-control': cacheControl
+          } 
+        })
+      } catch (err) {
+        console.error('Static file serving error:', err)
         return new Response('Not Found', { status: 404 })
       }
     })
