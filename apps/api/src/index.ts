@@ -701,10 +701,15 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         const auctionId = `${txid}:${voutIndex}:${String(sellerAddress).slice(0, 8)}`
         
         // ===== SECURITY: Private Key Encryption =====
-        // Get encryption password from environment variable or use default.
-        // WARNING: 'changeit' is only for development. Set AUCTION_ENCRYPTION_PASSWORD in production.
-        // See SECURITY.md for details on key management and rotation.
-        const encryptionPassword = Bun.env.AUCTION_ENCRYPTION_PASSWORD || Bun.env.ENCRYPTION_PASSWORD || 'changeit'
+        // Get encryption password from environment variable.
+        // AUCTION_ENCRYPTION_PASSWORD must be set in environment.
+        const encryptionPassword = Bun.env.AUCTION_ENCRYPTION_PASSWORD
+        if (!encryptionPassword) {
+          return new Response(JSON.stringify({ error: 'AUCTION_ENCRYPTION_PASSWORD environment variable not set' }), {
+            status: 500,
+            headers: { 'content-type': 'application/json' },
+          })
+        }
         
         const { keyPair, address } = await database.generateAuctionKeyPair(auctionId, { password: encryptionPassword })
 
@@ -734,7 +739,6 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         // Encrypt the private key using AES-256-GCM with PBKDF2-SHA256 (100k iterations).
         // The encrypted payload includes: algorithm, KDF, iterations, random IV, random salt, and ciphertext.
         // This ensures private keys are never stored in plaintext in the database.
-        // See SECURITY.md for encryption algorithm details and verification steps.
         const encryptedPrivateKey = await database.encryptUtf8(keyPair.privateKeyHex, encryptionPassword)
 
         const now = Math.floor(Date.now() / 1000)
