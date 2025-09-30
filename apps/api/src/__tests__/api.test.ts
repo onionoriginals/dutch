@@ -76,14 +76,14 @@ describe('health endpoints', () => {
     expect(res.status).toBe(200)
     const body: any = await res.json()
     expect(body.ok).toBe(true)
-    expect(body.version).toBeDefined()
-    expect(body.counts.total).toBeGreaterThan(0)
+    expect(body.data.version).toBeDefined()
+    expect(body.data.counts.total).toBeGreaterThan(0)
   })
 
   test('network override with query param', async () => {
     const res = await app.handle(new Request('http://localhost/api/health?network=regtest'))
     const body: any = await res.json()
-    expect(body.network).toBe('regtest')
+    expect(body.data.network).toBe('regtest')
     // env should remain mainnet after request
     expect((globalThis as any).process.env.BITCOIN_NETWORK).toBe('mainnet')
   })
@@ -95,20 +95,20 @@ describe('listings and filters', () => {
     expect(res.status).toBe(200)
     const body: any = await res.json()
     expect(body.ok).toBe(true)
-    expect(Array.isArray(body.items)).toBe(true)
-    expect(body.items.length).toBeGreaterThan(0)
+    expect(Array.isArray(body.data.items)).toBe(true)
+    expect(body.data.items.length).toBeGreaterThan(0)
   })
 
   test('filter by status', async () => {
     const res = await app.handle(new Request('http://localhost/api/auctions?status=active'))
     const body: any = await res.json()
-    expect(body.items.every((i: any) => i.status === 'active')).toBe(true)
+    expect(body.data.items.every((i: any) => i.status === 'active')).toBe(true)
   })
 
   test('filter by type=clearing', async () => {
     const res = await app.handle(new Request('http://localhost/api/auctions?type=clearing'))
     const body: any = await res.json()
-    expect(body.items.every((i: any) => i.auction_type === 'clearing')).toBe(true)
+    expect(body.data.items.every((i: any) => i.auction_type === 'clearing')).toBe(true)
   })
 })
 
@@ -117,8 +117,8 @@ describe('pricing endpoints and expiration', () => {
     const res = await app.handle(new Request('http://localhost/api/auction/a1'))
     const body: any = await res.json()
     expect(body.ok).toBe(true)
-    expect(body.auction.id).toBe('a1')
-    expect(body.pricing.currentPriceLinear).toBeGreaterThan(0)
+    expect(body.data.auction.id).toBe('a1')
+    expect(body.data.pricing.currentPriceLinear).toBeGreaterThan(0)
   })
 
   test('GET /api/price/:id marks expired if past end_time', async () => {
@@ -126,18 +126,18 @@ describe('pricing endpoints and expiration', () => {
     const res = await app.handle(new Request('http://localhost/api/price/a2'))
     const body: any = await res.json()
     expect(body.ok).toBe(true)
-    expect(body.status).toBe('expired')
+    expect(body.data.status).toBe('expired')
     // follow-up: details reflect expired
     const res2 = await app.handle(new Request('http://localhost/api/auction/a2'))
     const body2: any = await res2.json()
-    expect(body2.auction.status).toBe('expired')
+    expect(body2.data.auction.status).toBe('expired')
   })
 
   test('GET /api/price/:id/stepped returns stepped price', async () => {
     const res = await app.handle(new Request('http://localhost/api/price/a1/stepped'))
     const body: any = await res.json()
     expect(body.ok).toBe(true)
-    expect(body.price).toBeGreaterThan(0)
+    expect(body.data.price).toBeGreaterThan(0)
   })
 })
 
@@ -162,7 +162,7 @@ describe('manual status updates', () => {
     expect(body.ok).toBe(true)
     const res2 = await app.handle(new Request('http://localhost/api/auction/a1'))
     const body2: any = await res2.json()
-    expect(body2.auction.status).toBe('sold')
+    expect(body2.data.auction.status).toBe('sold')
   })
 })
 
