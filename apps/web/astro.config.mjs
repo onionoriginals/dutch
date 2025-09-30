@@ -3,6 +3,7 @@ import tailwind from '@astrojs/tailwind'
 import react from '@astrojs/react'
 
 export default defineConfig({
+  output: 'static', // Generate static site for API to serve
   integrations: [tailwind({ applyBaseStyles: false }), react()],
   server: {
     host: true,
