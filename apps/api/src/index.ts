@@ -825,8 +825,8 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         
         // If it's the root or a path without extension, serve index.html (SPA fallback)
         const cleanPath: string = String(pathname).split('?')[0] || ''
-        const ext = (cleanPath.split('.').pop() || '').toLowerCase()
-        const hasExtension = cleanPath.includes('.') && ext.length > 0
+        const originalExt = (cleanPath.split('.').pop() || '').toLowerCase()
+        const hasExtension = cleanPath.includes('.') && originalExt.length > 0
         
         if (!hasExtension || pathname === '/') {
           pathname = '/index.html'
@@ -834,7 +834,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         
         // Only serve known static file types
         const allowedExtensions = ['css', 'js', 'html', 'json', 'svg', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'woff', 'woff2', 'ttf', 'eot']
-        if (hasExtension && !allowedExtensions.includes(ext)) {
+        if (hasExtension && !allowedExtensions.includes(originalExt)) {
           return new Response('Not Found', { status: 404 })
         }
         
@@ -859,7 +859,10 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
           return new Response('Not Found', { status: 404 })
         }
         
-        // Determine content type
+        // Determine content type based on the ACTUAL file being served (after rewrite)
+        const finalPath = String(pathname).split('?')[0] || ''
+        const ext = (finalPath.split('.').pop() || '').toLowerCase()
+        
         const contentTypeMap: Record<string, string> = {
           'css': 'text/css; charset=utf-8',
           'js': 'application/javascript; charset=utf-8',
