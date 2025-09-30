@@ -7,6 +7,7 @@ import { DateTimePicker } from '../inputs/DateTimePicker'
 import { DutchAuctionSchema, dutchAuctionStepFields } from '../../lib/validation/auction'
 import { normalizeDutch } from '../../utils/normalizeAuction'
 import { btcToSats, formatSats, btcToUsd, formatCurrency, getBtcUsdRate } from '../../utils/currency'
+import { verifyMultipleInscriptions, checkAllValid, type Network } from '../../lib/bitcoin/verifyInscription'
 
 type DraftShape = {
   values: any
@@ -62,6 +63,9 @@ export default function CreateAuctionWizard() {
   const { restored, clearDraft } = useDraftPersistence(formValues)
 
   const [submittedPayload, setSubmittedPayload] = React.useState(null as any | null)
+  const [isVerifying, setIsVerifying] = React.useState(false)
+  const [isSubmitting, setIsSubmitting] = React.useState(false)
+  const [verificationError, setVerificationError] = React.useState<string | null>(null)
 
   const defaultValues = React.useMemo(() => {
     if (restored?.values) return restored.values as Record<string, unknown>
@@ -74,6 +78,7 @@ export default function CreateAuctionWizard() {
 
   const onSubmit = React.useCallback(async (values: any) => {
     const payload = normalizeDutch(values)
+    setVerificationError(null)
     
     try {
       // Parse inscription IDs (one per line)
@@ -82,15 +87,50 @@ export default function CreateAuctionWizard() {
         .map((id: string) => id.trim())
         .filter((id: string) => id.length > 0)
       
-      // Calculate quantity from number of inscription IDs
-      const quantity = inscriptionIds.length
+      // Get seller address
+      const sellerAddress = values.sellerAddress?.trim() || ''
       
-      // Calculate duration in seconds
+      if (!sellerAddress) {
+        throw new Error('Seller address is required')
+      }
+      
+      if (inscriptionIds.length === 0) {
+        throw new Error('At least one inscription ID is required')
+      }
+      
+      // Determine network from environment or default to testnet for safety
+      const network: Network = ((import.meta as any)?.env?.PUBLIC_BITCOIN_NETWORK as Network) || 'testnet'
+      
+      // Step 1: Verify inscription ownership before creating auction
+      setIsVerifying(true)
+      console.log(`Verifying ${inscriptionIds.length} inscription(s) on ${network}...`)
+      
+      const verificationResults = await verifyMultipleInscriptions(
+        inscriptionIds,
+        sellerAddress,
+        network
+      )
+      
+      const { allValid, errors } = checkAllValid(verificationResults)
+      setIsVerifying(false)
+      
+      if (!allValid) {
+        const errorMessages = errors.map((e, i) => `${i + 1}. ${e.error}`).join('\n')
+        const errorMsg = `Inscription verification failed:\n${errorMessages}`
+        setVerificationError(errorMsg)
+        throw new Error(errorMsg)
+      }
+      
+      console.log('✓ All inscriptions verified successfully')
+      
+      // Step 2: Calculate quantity and duration
+      const quantity = inscriptionIds.length
       const duration = Math.floor(
         (new Date(values.endTime).getTime() - new Date(values.startTime).getTime()) / 1000
       )
       
-      // Make API call to create clearing auction
+      // Step 3: Make API call to create clearing auction
+      setIsSubmitting(true)
       const response = await fetch('/api/clearing/create-auction', {
         method: 'POST',
         headers: {
@@ -103,22 +143,40 @@ export default function CreateAuctionWizard() {
           minPrice: values.endPrice,
           duration: duration,
           decrementInterval: values.decrementIntervalSeconds,
-          sellerAddress: 'tb1q...', // TODO: Connect wallet to get seller address
+          sellerAddress: sellerAddress,
         }),
       })
 
       const result = await response.json()
+      setIsSubmitting(false)
       
       if (!response.ok || !result.ok) {
-        throw new Error(result.error || 'Failed to create auction')
+        const errorMsg = result.error || 'Failed to create auction'
+        const errorCode = result.code || ''
+        
+        // Provide user-friendly error messages based on error codes
+        let userMessage = errorMsg
+        if (errorCode === 'OWNERSHIP_MISMATCH') {
+          userMessage = `⚠️ Ownership Verification Failed\n\n${errorMsg}\n\nPlease ensure you own the inscription and that the correct seller address is provided.`
+        } else if (errorCode === 'ALREADY_SPENT') {
+          userMessage = `⚠️ Inscription Already Spent\n\n${errorMsg}\n\nThis inscription cannot be auctioned because it has already been transferred or spent.`
+        } else if (errorCode === 'NOT_FOUND' || errorCode === 'OUTPUT_NOT_FOUND') {
+          userMessage = `⚠️ Inscription Not Found\n\n${errorMsg}\n\nPlease verify the inscription ID is correct and exists on ${network}.`
+        }
+        
+        throw new Error(userMessage)
       }
 
-      console.log('Clearing auction created:', result)
+      console.log('✓ Clearing auction created:', result)
       clearDraft()
       setSubmittedPayload({ ...payload, apiResponse: result })
     } catch (error) {
       console.error('Failed to create auction:', error)
-      alert(`Failed to create auction: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
+      alert(errorMessage)
+    } finally {
+      setIsVerifying(false)
+      setIsSubmitting(false)
     }
   }, [clearDraft])
 
@@ -221,17 +279,25 @@ export default function CreateAuctionWizard() {
           <div id="items" className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6 space-y-6">
             <div>
               <h4 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Auction Items</h4>
-              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">Specify the inscriptions being auctioned</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">Specify the inscriptions being auctioned and your Bitcoin address</p>
             </div>
             <FormField name="inscriptionIds">
               <FieldLabel>Inscription IDs (one per line)</FieldLabel>
               <Textarea 
-                placeholder="e.g.&#10;abc123i0&#10;def456i0&#10;ghi789i0" 
+                placeholder="e.g.&#10;abc123...def456i0&#10;789abc...123def i1&#10;xyz987...654abci0" 
                 rows={6}
               />
               <InscriptionCountHelper />
               <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                Enter inscription IDs in the format: txid+i+vout (one per line)
+                Enter inscription IDs in the format: &lt;txid&gt;i&lt;vout&gt; (one per line)
+              </div>
+              <FieldError />
+            </FormField>
+            <FormField name="sellerAddress">
+              <FieldLabel>Your Bitcoin Address (Seller)</FieldLabel>
+              <Input placeholder="e.g. bc1q... or tb1q..." />
+              <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                This address must own all the inscriptions listed above. Ownership will be verified before auction creation.
               </div>
               <FieldError />
             </FormField>
@@ -325,7 +391,25 @@ export default function CreateAuctionWizard() {
         {/* Review */}
         <FormStep fields={[]}> 
           <ReviewBlock type={type} />
-          <StepNav submitLabel="Create auction" />
+          {verificationError && (
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mt-4">
+              <p className="text-sm text-red-900 dark:text-red-200 whitespace-pre-line">{verificationError}</p>
+            </div>
+          )}
+          {(isVerifying || isSubmitting) && (
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mt-4">
+              <div className="flex items-center gap-3">
+                <svg className="animate-spin h-5 w-5 text-blue-600 dark:text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <p className="text-sm text-blue-900 dark:text-blue-200">
+                  {isVerifying ? 'Verifying inscription ownership...' : 'Creating auction...'}
+                </p>
+              </div>
+            </div>
+          )}
+          <StepNav submitLabel={isVerifying || isSubmitting ? 'Processing...' : 'Create auction'} disabled={isVerifying || isSubmitting} />
         </FormStep>
       </Form>
     </div>
@@ -350,23 +434,24 @@ function WizardPreviewButton({ type, values, className }: { type: 'dutch'; value
 }
 
 
-function StepNav({ submitLabel = 'Next' }: { submitLabel?: string }) {
+function StepNav({ submitLabel = 'Next', disabled = false }: { submitLabel?: string; disabled?: boolean }) {
   const { back, next, isFirst, isLast, form } = useFormWizard()
   const startPrice = form.watch('startPrice')
   const endPrice = form.watch('endPrice')
   
   // Disable next button if on pricing step and prices are invalid
   const isPricingInvalid = startPrice && endPrice && typeof startPrice === 'number' && typeof endPrice === 'number' && endPrice >= startPrice
+  const isDisabled = disabled || isPricingInvalid
   
   return (
     <div className="flex justify-between items-center pt-6 mt-6 border-t border-gray-200 dark:border-gray-700">
       <button 
         type="button" 
         onClick={back} 
-        disabled={isFirst} 
+        disabled={isFirst || disabled} 
         aria-label="Previous step"
         className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-          isFirst 
+          isFirst || disabled
             ? 'text-gray-400 cursor-not-allowed dark:text-gray-600' 
             : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700'
         }`}
@@ -376,10 +461,10 @@ function StepNav({ submitLabel = 'Next' }: { submitLabel?: string }) {
       <button 
         type={isLast ? 'submit' : 'button'} 
         onClick={isLast ? undefined : next}
-        disabled={isPricingInvalid}
+        disabled={isDisabled}
         aria-label={isLast ? 'Submit form' : 'Next step'}
         className={`px-6 py-2 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors ${
-          isPricingInvalid
+          isDisabled
             ? 'bg-gray-400 text-gray-200 cursor-not-allowed dark:bg-gray-600 dark:text-gray-400'
             : 'bg-blue-600 text-white hover:bg-blue-700'
         }`}
@@ -446,7 +531,7 @@ function ReviewBlock({ type }: { type: 'dutch' }) {
         </div>
 
         <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
-          <h4 className="font-medium text-gray-900 dark:text-white mb-3">Items</h4>
+          <h4 className="font-medium text-gray-900 dark:text-white mb-3">Items & Seller</h4>
           <div className="space-y-2 text-sm">
             {values.inscriptionIds && (
               <>
@@ -466,6 +551,14 @@ function ReviewBlock({ type }: { type: 'dutch' }) {
                   </div>
                 </div>
               </>
+            )}
+            {values.sellerAddress && (
+              <div className="space-y-1 pt-2">
+                <span className="text-gray-600 dark:text-gray-400">Seller Address:</span>
+                <div className="text-xs font-mono bg-gray-100 dark:bg-gray-900 p-2 rounded break-all">
+                  {values.sellerAddress}
+                </div>
+              </div>
             )}
           </div>
         </div>

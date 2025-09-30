@@ -966,14 +966,22 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
 
         const txResp = await fetch(`${base}/tx/${txid}`)
         if (!txResp.ok) {
-          set.status = 400
-          return error('Transaction not found', 'NOT_FOUND')
+          set.status = txResp.status === 404 ? 404 : 400
+          return error(
+            txResp.status === 404 
+              ? `Transaction ${txid} not found on ${getBitcoinNetwork()}`
+              : `Failed to fetch transaction: HTTP ${txResp.status}`,
+            'NOT_FOUND'
+          )
         }
         const txJson = await txResp.json() as any
         const vout = (txJson?.vout || [])[voutIndex]
         if (!vout) {
-          set.status = 400
-          return error('Inscription output not found', 'NOT_FOUND')
+          set.status = 404
+          return error(
+            `Output ${voutIndex} not found in transaction ${txid}`,
+            'OUTPUT_NOT_FOUND'
+          )
         }
 
         const outspendsResp = await fetch(`${base}/tx/${txid}/outspends`)
@@ -984,7 +992,8 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         const outspends = await outspendsResp.json() as any
         const outspend = outspends?.[voutIndex]
         const spent = !!outspend?.spent
-        const ownerMatches = String(vout?.scriptpubkey_address || '') === String(sellerAddress)
+        const outputAddress = String(vout?.scriptpubkey_address || '')
+        const ownerMatches = outputAddress === String(sellerAddress)
         
         // Log ownership check with redaction
         logger.info('Ownership verification', {
@@ -1000,11 +1009,19 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         
         if (!ownerMatches) {
           set.status = 403
-          return error('Ownership mismatch for inscription UTXO', 'FORBIDDEN')
+          return error(
+            outputAddress 
+              ? `Ownership mismatch: inscription is owned by ${outputAddress}, not ${sellerAddress}`
+              : 'Ownership mismatch: unable to verify inscription ownership',
+            'OWNERSHIP_MISMATCH'
+          )
         }
         if (spent) {
           set.status = 403
-          return error('Inscription UTXO already spent', 'FORBIDDEN')
+          return error(
+            'This inscription has already been spent and cannot be auctioned',
+            'ALREADY_SPENT'
+          )
         }
 
         // Deterministic auction id from asset and seller to make testing easier
