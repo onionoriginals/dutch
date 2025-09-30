@@ -394,4 +394,60 @@ describe('Enhanced clearing price auction workflows', () => {
       process.env.BITCOIN_NETWORK = 'testnet';
     });
   });
+
+  describe('Multiple settlement passes (idempotency)', () => {
+    it('marks auction as sold based on cumulative settled items across multiple invocations', () => {
+      const auctionId = 'multi-settle-1';
+      
+      // Create auction with 3 items
+      db.createClearingPriceAuction({
+        id: auctionId,
+        inscription_id: 'insc-multi-0',
+        inscription_ids: ['insc-multi-0', 'insc-multi-1', 'insc-multi-2'],
+        quantity: 3,
+        start_price: 30000,
+        min_price: 10000,
+        duration: 3600,
+        decrement_interval: 600,
+        seller_address: 'tb1pmultiseller'
+      });
+      
+      // Create 3 bids but confirm only 2 initially
+      const bid1 = db.createBidPaymentPSBT(auctionId, 'tb1qmultibuyer1', 28000, 1);
+      const bid2 = db.createBidPaymentPSBT(auctionId, 'tb1qmultibuyer2', 27000, 1);
+      const bid3 = db.createBidPaymentPSBT(auctionId, 'tb1qmultibuyer3', 26000, 1);
+      
+      db.confirmBidPayment(bid1.bidId, 'tx_multi1');
+      db.confirmBidPayment(bid2.bidId, 'tx_multi2');
+      
+      // First settlement pass: settle 2 items
+      const result1 = db.processAuctionSettlement(auctionId);
+      expect(result1.success).toBe(true);
+      expect(result1.artifacts.length).toBe(2);
+      
+      // Check auction status - should NOT be sold yet (only 2/3 settled)
+      const status1 = db.getClearingAuctionStatus(auctionId);
+      expect(status1.auction.status).toBe('active');
+      
+      // Confirm third payment
+      db.confirmBidPayment(bid3.bidId, 'tx_multi3');
+      
+      // Second settlement pass: settle remaining item
+      const result2 = db.processAuctionSettlement(auctionId);
+      expect(result2.success).toBe(true);
+      expect(result2.artifacts.length).toBe(1); // Only 1 new artifact
+      
+      // Check auction status - should NOW be sold (3/3 settled)
+      const status2 = db.getClearingAuctionStatus(auctionId);
+      expect(status2.auction.status).toBe('sold');
+      
+      // Third settlement pass (idempotent): no new artifacts, still sold
+      const result3 = db.processAuctionSettlement(auctionId);
+      expect(result3.success).toBe(true);
+      expect(result3.artifacts.length).toBe(0); // No new artifacts
+      
+      const status3 = db.getClearingAuctionStatus(auctionId);
+      expect(status3.auction.status).toBe('sold'); // Still sold
+    });
+  });
 });

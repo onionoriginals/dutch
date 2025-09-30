@@ -145,6 +145,7 @@ Alternative paths:
 **Idempotency:**
 - Skips bids already in `settled` state
 - Generates artifacts only for newly settled bids
+- Marks auction as 'sold' based on cumulative settled quantity across **all** bids, not just current invocation
 
 **Transitions:** `payment_confirmed` → `settled` (for multiple bids)
 

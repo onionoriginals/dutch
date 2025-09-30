@@ -831,7 +831,13 @@ export class SecureDutchyDatabase {
       this.bids.set(bid.id, bid);
     }
     
-    auction.status = inscriptionIdx >= auction.quantity ? 'sold' : auction.status;
+    // Calculate total settled items across all bids (not just current invocation)
+    const allBids = (this.bidsByAuction.get(auctionId) || [])
+      .map((id) => this.bids.get(id))
+      .filter((b) => b?.status === 'settled');
+    const totalSettledQuantity = allBids.reduce((sum, bid) => sum + (bid?.quantity || 0), 0);
+    
+    auction.status = totalSettledQuantity >= auction.quantity ? 'sold' : auction.status;
     auction.updated_at = Math.floor(Date.now() / 1000);
     this.clearingAuctions.set(auctionId, auction);
     return { success: true, artifacts };

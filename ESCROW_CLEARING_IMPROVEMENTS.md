@@ -95,6 +95,7 @@ placed → payment_pending → payment_confirmed → settled
 - ✅ Skips already settled bids
 - ✅ Maintains consistent artifact generation
 - ✅ Safe to call multiple times
+- ✅ Marks auction as 'sold' based on cumulative settled items across all invocations (not just current pass)
 
 ### 6. Enhanced API Error Handling
 **File Modified:** `apps/api/src/index.ts`
@@ -225,6 +226,16 @@ Comprehensive API-level tests covering:
 3. Confirm payment again with same txId
 4. Second confirmation returns alreadyConfirmed=true
 5. Both operations succeed
+```
+
+#### Multiple Settlement Passes Test
+```typescript
+1. Create auction (3 items)
+2. Create 3 bids, confirm only 2
+3. First settlement: 2 items settled, auction status = 'active'
+4. Confirm 3rd payment
+5. Second settlement: 1 item settled, auction status = 'sold'
+6. Third settlement (idempotent): 0 items settled, auction status = 'sold'
 ```
 
 #### State Transition Test
