@@ -298,6 +298,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
             pricing: null 
           })
         } catch {
+          set.status = 404
           return error('Auction not found', 'NOT_FOUND')
         }
       }),
@@ -315,11 +316,14 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
       },
     )
     // Pricing endpoints
-    .get('/price/:auctionId', async ({ params, query }) =>
+    .get('/price/:auctionId', async ({ params, query, set }) =>
       await withNetworkOverride(query?.network as any, async () => {
         const now = Math.floor(Date.now() / 1000)
         const a = await (database as any).getAuction(params.auctionId)
-        if (!a) return error('Auction not found', 'NOT_FOUND')
+        if (!a) {
+          set.status = 404
+          return error('Auction not found', 'NOT_FOUND')
+        }
         if (a.status === 'active' && a.end_time <= now) {
           await (database as any).updateAuctionStatus(a.id, 'expired')
           a.status = 'expired'
@@ -342,11 +346,14 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         ])
       },
     )
-    .get('/price/:auctionId/stepped', async ({ params, query }) =>
+    .get('/price/:auctionId/stepped', async ({ params, query, set }) =>
       await withNetworkOverride(query?.network as any, async () => {
         const now = Math.floor(Date.now() / 1000)
         const a = await (database as any).getAuction(params.auctionId)
-        if (!a) return error('Auction not found', 'NOT_FOUND')
+        if (!a) {
+          set.status = 404
+          return error('Auction not found', 'NOT_FOUND')
+        }
         if (a.status === 'active' && a.end_time <= now) {
           await (database as any).updateAuctionStatus(a.id, 'expired')
           a.status = 'expired'
@@ -380,14 +387,18 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         response: SuccessResponse(t.Any())
       },
     )
-    .post('/auction/:auctionId/status', async ({ params, body, query }) =>
+    .post('/auction/:auctionId/status', async ({ params, body, query, set }) =>
       await withNetworkOverride(query?.network as any, async () => {
         const allowed = ['active', 'sold', 'expired']
         if (!allowed.includes((body as any).status)) {
+          set.status = 400
           return error('Invalid status', 'INVALID_STATUS')
         }
         const res = await (database as any).updateAuctionStatus(params.auctionId, (body as any).status)
-        if (!('success' in res) || !res.success) return error('Auction not found', 'NOT_FOUND')
+        if (!('success' in res) || !res.success) {
+          set.status = 404
+          return error('Auction not found', 'NOT_FOUND')
+        }
         return success({ auctionId: params.auctionId, newStatus: (body as any).status })
       }),
       { 
@@ -404,7 +415,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
       },
     )
     // Clearing price Dutch auction endpoints
-    .post('/clearing/create-auction', async ({ body }) => {
+    .post('/clearing/create-auction', async ({ body, set }) => {
       try {
         const {
           auctionId,
@@ -417,9 +428,11 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
           sellerAddress,
         } = body
         if (!inscriptionIds || inscriptionIds.length === 0) {
+          set.status = 400
           return error('inscriptionIds[] required', 'VALIDATION_ERROR')
         }
         if (!quantity || !startPrice || !minPrice || !duration || !sellerAddress) {
+          set.status = 400
           return error('quantity, startPrice, minPrice, duration, sellerAddress required', 'VALIDATION_ERROR')
         }
         const id = String(auctionId ?? `auc_${Date.now()}`)
@@ -437,6 +450,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         const res = (database as any).createClearingPriceAuction(input)
         return success(res)
       } catch (err: any) {
+        set.status = 500
         return error(err?.message || 'internal_error', 'INTERNAL_ERROR')
       }
     },
@@ -456,15 +470,17 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         ErrorResponse
       ])
     })
-    .post('/clearing/place-bid', async ({ body }) => {
+    .post('/clearing/place-bid', async ({ body, set }) => {
       try {
         const { auctionId, bidderAddress, quantity } = body
         if (!auctionId || !bidderAddress) {
+          set.status = 400
           return error('auctionId and bidderAddress required', 'VALIDATION_ERROR')
         }
         const res = (database as any).placeBid(String(auctionId), String(bidderAddress), Number(quantity ?? 1))
         return success(res)
       } catch (err: any) {
+        set.status = 500
         return error(err?.message || 'internal_error', 'INTERNAL_ERROR')
       }
     },
@@ -479,11 +495,12 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         ErrorResponse
       ])
     })
-    .get('/clearing/status/:auctionId', ({ params }) => {
+    .get('/clearing/status/:auctionId', ({ params, set }) => {
       try {
         const res = (database as any).getClearingAuctionStatus(String(params.auctionId))
         return success(res)
       } catch (err: any) {
+        set.status = 404
         return error(err?.message || 'not_found', 'NOT_FOUND')
       }
     },
@@ -493,11 +510,12 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         ErrorResponse
       ])
     })
-    .get('/clearing/bids/:auctionId', ({ params }) => {
+    .get('/clearing/bids/:auctionId', ({ params, set }) => {
       try {
         const res = (database as any).getAuctionBids(String(params.auctionId))
         return success(res)
       } catch (err: any) {
+        set.status = 404
         return error(err?.message || 'not_found', 'NOT_FOUND')
       }
     },
@@ -507,11 +525,12 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         ErrorResponse
       ])
     })
-    .get('/clearing/settlement/:auctionId', ({ params }) => {
+    .get('/clearing/settlement/:auctionId', ({ params, set }) => {
       try {
         const res = (database as any).calculateSettlement(String(params.auctionId))
         return success(res)
       } catch (err: any) {
+        set.status = 404
         return error(err?.message || 'not_found', 'NOT_FOUND')
       }
     },
@@ -521,15 +540,17 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         ErrorResponse
       ])
     })
-    .post('/clearing/mark-settled', ({ body }) => {
+    .post('/clearing/mark-settled', ({ body, set }) => {
       try {
         const { auctionId, bidIds } = body
         if (!auctionId || !Array.isArray(bidIds)) {
+          set.status = 400
           return error('auctionId and bidIds[] required', 'VALIDATION_ERROR')
         }
         const res = (database as any).markBidsSettled(String(auctionId), bidIds.map(String))
         return success(res)
       } catch (err: any) {
+        set.status = 500
         return error(err?.message || 'internal_error', 'INTERNAL_ERROR')
       }
     },
@@ -543,15 +564,17 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         ErrorResponse
       ])
     })
-    .post('/clearing/create-bid-payment', ({ body }) => {
+    .post('/clearing/create-bid-payment', ({ body, set }) => {
       try {
         const { auctionId, bidderAddress, bidAmount, quantity } = body
         if (!auctionId || !bidderAddress || bidAmount == null) {
+          set.status = 400
           return error('auctionId, bidderAddress, bidAmount required', 'VALIDATION_ERROR')
         }
         const res = (database as any).createBidPaymentPSBT(String(auctionId), String(bidderAddress), Number(bidAmount), Number(quantity ?? 1))
         return success(res)
       } catch (err: any) {
+        set.status = 500
         return error(err?.message || 'internal_error', 'INTERNAL_ERROR')
       }
     },
@@ -567,15 +590,17 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         ErrorResponse
       ])
     })
-    .post('/clearing/confirm-bid-payment', ({ body }) => {
+    .post('/clearing/confirm-bid-payment', ({ body, set }) => {
       try {
         const { bidId, transactionId } = body
         if (!bidId || !transactionId) {
+          set.status = 400
           return error('bidId and transactionId required', 'VALIDATION_ERROR')
         }
         const res = (database as any).confirmBidPayment(String(bidId), String(transactionId))
         return success(res)
       } catch (err: any) {
+        set.status = 500
         return error(err?.message || 'internal_error', 'INTERNAL_ERROR')
       }
     },
@@ -589,15 +614,17 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         ErrorResponse
       ])
     })
-    .post('/clearing/process-settlement', ({ body }) => {
+    .post('/clearing/process-settlement', ({ body, set }) => {
       try {
         const { auctionId } = body
         if (!auctionId) {
+          set.status = 400
           return error('auctionId required', 'VALIDATION_ERROR')
         }
         const res = (database as any).processAuctionSettlement(String(auctionId))
         return success(res)
       } catch (err: any) {
+        set.status = 500
         return error(err?.message || 'internal_error', 'INTERNAL_ERROR')
       }
     },
@@ -610,11 +637,12 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         ErrorResponse
       ])
     })
-    .get('/clearing/bid-payment-status/:bidId', ({ params }) => {
+    .get('/clearing/bid-payment-status/:bidId', ({ params, set }) => {
       try {
         const res = (database as any).getBidDetails(String(params.bidId))
         return success(res)
       } catch (err: any) {
+        set.status = 404
         return error(err?.message || 'not_found', 'NOT_FOUND')
       }
     },
@@ -624,11 +652,12 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         ErrorResponse
       ])
     })
-    .get('/clearing/auction-payments/:auctionId', ({ params }) => {
+    .get('/clearing/auction-payments/:auctionId', ({ params, set }) => {
       try {
         const res = (database as any).getAuctionBidsWithPayments(String(params.auctionId))
         return success(res)
       } catch (err: any) {
+        set.status = 404
         return error(err?.message || 'not_found', 'NOT_FOUND')
       }
     },
@@ -639,7 +668,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
       ])
     })
     // Demo helper
-    .post('/demo/create-clearing-auction', ({ body }) => {
+    .post('/demo/create-clearing-auction', ({ body, set }) => {
       try {
         const id = String(body?.auctionId ?? `demo_${Date.now()}`)
         const inscriptionIds = body?.inscriptionIds ?? ['insc-0', 'insc-1', 'insc-2']
@@ -656,6 +685,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         })
         return success(res)
       } catch (err: any) {
+        set.status = 500
         return error(err?.message || 'internal_error', 'INTERNAL_ERROR')
       }
     },
