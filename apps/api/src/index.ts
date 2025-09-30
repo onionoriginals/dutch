@@ -111,7 +111,12 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
           return new Response('index.html not found', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } })
         }
         const html = await file.text()
-        return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8' } })
+        return new Response(html, { 
+          headers: { 
+            'content-type': 'text/html; charset=utf-8',
+            'cache-control': 'public, max-age=0, must-revalidate'
+          } 
+        })
       } catch (err: any) {
         return new Response('Failed to load index.html', { status: 500, headers: { 'content-type': 'text/plain; charset=utf-8' } })
       }
@@ -825,21 +830,53 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         if (pathname === '/') pathname = '/index.html'
         const cleanPath: string = String(pathname).split('?')[0] || ''
         const ext = (cleanPath.split('.').pop() || '').toLowerCase()
-        if (!['css', 'js', 'html'].includes(ext)) {
+        
+        // Allow common web asset types
+        const allowedExtensions = ['css', 'js', 'html', 'png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'ico', 'woff', 'woff2', 'ttf', 'eot']
+        if (!allowedExtensions.includes(ext)) {
           return new Response('Not Found', { status: 404 })
         }
+        
         const distDir = new URL('../../web/dist/', import.meta.url)
         const fileUrl = new URL(cleanPath.replace(/^\//, ''), distDir)
         const file = Bun.file(fileUrl)
         if (!(await file.exists())) {
           return new Response('Not Found', { status: 404 })
         }
-        const contentType = ext === 'css'
-          ? 'text/css; charset=utf-8'
-          : ext === 'js'
-            ? 'application/javascript; charset=utf-8'
-            : 'text/html; charset=utf-8'
-        return new Response(file, { headers: { 'content-type': contentType } })
+        
+        // Determine content type
+        const contentTypeMap: Record<string, string> = {
+          'css': 'text/css; charset=utf-8',
+          'js': 'application/javascript; charset=utf-8',
+          'html': 'text/html; charset=utf-8',
+          'png': 'image/png',
+          'jpg': 'image/jpeg',
+          'jpeg': 'image/jpeg',
+          'gif': 'image/gif',
+          'svg': 'image/svg+xml',
+          'webp': 'image/webp',
+          'ico': 'image/x-icon',
+          'woff': 'font/woff',
+          'woff2': 'font/woff2',
+          'ttf': 'font/ttf',
+          'eot': 'application/vnd.ms-fontobject',
+        }
+        const contentType = contentTypeMap[ext] || 'application/octet-stream'
+        
+        // Cache headers: immutable for hashed assets in _astro/, revalidate for HTML
+        const isHashedAsset = cleanPath.includes('/_astro/')
+        const cacheControl = isHashedAsset
+          ? 'public, max-age=31536000, immutable'
+          : ext === 'html'
+            ? 'public, max-age=0, must-revalidate'
+            : 'public, max-age=3600'
+        
+        return new Response(file, { 
+          headers: { 
+            'content-type': contentType,
+            'cache-control': cacheControl,
+          } 
+        })
       } catch {
         return new Response('Not Found', { status: 404 })
       }

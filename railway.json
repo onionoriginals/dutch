@@ -13,7 +13,8 @@
         "buildCommand": "bun run build"
       },
       "startCommand": "bun run start",
-      "healthcheckPath": "/"
+      "healthcheckPath": "/health",
+      "healthcheckTimeout": 300
     },
     {
       "name": "web",
@@ -24,7 +25,8 @@
         "buildCommand": "bun run build"
       },
       "startCommand": "bun run start",
-      "healthcheckPath": "/"
+      "healthcheckPath": "/",
+      "healthcheckTimeout": 300
     }
   ]
 }
