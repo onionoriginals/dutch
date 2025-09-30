@@ -1,4 +1,4 @@
-import postgres, { Sql } from 'postgres'
+import postgres, { type Sql } from 'postgres'
 import * as bip39 from 'bip39'
 import { BIP32Factory, type BIP32Interface } from 'bip32'
 import * as tinySecp256k1 from 'tiny-secp256k1'
@@ -184,15 +184,21 @@ export class PostgresDutchyDatabase {
     const encoder = new TextEncoder()
     const salt = crypto.getRandomValues(new Uint8Array(16))
     const iv = crypto.getRandomValues(new Uint8Array(12))
-    const keyMaterial = await crypto.subtle.importKey('raw', encoder.encode(password), { name: 'PBKDF2' }, false, ['deriveKey'])
+    const keyMaterial = await crypto.subtle.importKey('raw', encoder.encode(password).buffer as ArrayBuffer, { name: 'PBKDF2' }, false, ['deriveKey'])
     const key = await crypto.subtle.deriveKey(
-      { name: 'PBKDF2', salt, iterations: 100_000, hash: 'SHA-256' },
+      { name: 'PBKDF2', salt: salt.buffer as ArrayBuffer, iterations: 100_000, hash: 'SHA-256' },
       keyMaterial,
       { name: 'AES-GCM', length: 256 },
       false,
       ['encrypt']
     )
-    const ciphertext = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, encoder.encode(plaintext)))
+    const ciphertext = new Uint8Array(
+      await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv: iv.buffer as ArrayBuffer },
+        key,
+        encoder.encode(plaintext).buffer as ArrayBuffer,
+      ),
+    )
     const payload = { alg: 'AES-256-GCM', kdf: 'PBKDF2-SHA256', iter: 100000, iv: this.encodeBase64(iv), salt: this.encodeBase64(salt), ct: this.encodeBase64(ciphertext) }
     return JSON.stringify(payload)
   }
@@ -203,15 +209,19 @@ export class PostgresDutchyDatabase {
     const salt = this.decodeBase64(data.salt)
     const iv = this.decodeBase64(data.iv)
     const ct = this.decodeBase64(data.ct)
-    const keyMaterial = await crypto.subtle.importKey('raw', encoder.encode(password), { name: 'PBKDF2' }, false, ['deriveKey'])
+    const keyMaterial = await crypto.subtle.importKey('raw', encoder.encode(password).buffer as ArrayBuffer, { name: 'PBKDF2' }, false, ['deriveKey'])
     const key = await crypto.subtle.deriveKey(
-      { name: 'PBKDF2', salt, iterations: data.iter || 100000, hash: 'SHA-256' },
+      { name: 'PBKDF2', salt: salt.buffer as ArrayBuffer, iterations: data.iter || 100000, hash: 'SHA-256' },
       keyMaterial,
       { name: 'AES-GCM', length: 256 },
       false,
       ['decrypt']
     )
-    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct)
+    const pt = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: iv.buffer as ArrayBuffer },
+      key,
+      ct.buffer as ArrayBuffer,
+    )
     return decoder.decode(pt)
   }
 
