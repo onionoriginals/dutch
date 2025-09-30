@@ -1,4 +1,4 @@
-import { Elysia, t } from 'elysia'
+import { Elysia, t, type TSchema } from 'elysia'
 import { swagger } from '@elysiajs/swagger'
 import { cors } from '@elysiajs/cors'
 import { helloDutch } from '@originals/dutch'
@@ -6,12 +6,11 @@ import { db as packageDb, getBitcoinNetwork, version, SecureDutchyDatabase } fro
 import { db as svcDb } from './services/db'
 import * as bitcoin from 'bitcoinjs-lib'
 import { logger } from './utils/logger'
-type BodyInit = Blob | ArrayBuffer | DataView | Uint8Array | ReadableStream | null | string
 
 // Track server start time for uptime metrics
 const SERVER_START_TIME = Date.now()
 // Standard response schemas
-const SuccessResponse = <T extends ReturnType<typeof t.Object>>(dataSchema: T) =>
+const SuccessResponse = <T extends TSchema>(dataSchema: T) =>
   t.Object({
     ok: t.Literal(true),
     data: dataSchema,
@@ -21,6 +20,133 @@ const ErrorResponse = t.Object({
   ok: t.Literal(false),
   error: t.String(),
   code: t.Optional(t.String()),
+})
+
+// Reusable schemas
+const UnknownRecord = t.Record(t.String(), t.Unknown())
+const AuctionStatus = t.Union([t.Literal('active'), t.Literal('sold'), t.Literal('expired')])
+const SingleAuctionBase = t.Object({
+  id: t.String(),
+  inscription_id: t.String(),
+  start_price: t.Number(),
+  min_price: t.Number(),
+  current_price: t.Number(),
+  duration: t.Number(),
+  decrement_interval: t.Number(),
+  start_time: t.Number(),
+  end_time: t.Number(),
+  status: AuctionStatus,
+  auction_address: t.String(),
+  encrypted_private_key: t.Optional(t.String()),
+  created_at: t.Number(),
+  updated_at: t.Number(),
+  buyer_address: t.Optional(t.String()),
+  transaction_id: t.Optional(t.String()),
+})
+const SingleAuctionWithType = t.Intersect([
+  SingleAuctionBase,
+  t.Object({ auction_type: t.Literal('single') }),
+])
+const ClearingAuctionFull = t.Object({
+  id: t.String(),
+  inscription_id: t.String(),
+  inscription_ids: t.Array(t.String()),
+  quantity: t.Number(),
+  itemsRemaining: t.Number(),
+  status: AuctionStatus,
+  start_price: t.Number(),
+  min_price: t.Number(),
+  duration: t.Number(),
+  decrement_interval: t.Number(),
+  created_at: t.Number(),
+  updated_at: t.Number(),
+})
+const ClearingAuctionWithType = t.Intersect([
+  ClearingAuctionFull,
+  t.Object({ auction_type: t.Literal('clearing') }),
+])
+// List items omit pricing fields for clearing auctions per listAuctions()
+const ClearingAuctionListItem = t.Object({
+  id: t.String(),
+  inscription_id: t.String(),
+  inscription_ids: t.Array(t.String()),
+  quantity: t.Number(),
+  itemsRemaining: t.Number(),
+  status: AuctionStatus,
+  created_at: t.Number(),
+  updated_at: t.Number(),
+  auction_type: t.Literal('clearing'),
+})
+const PricingSchema = t.Object({
+  currentPriceLinear: t.Number(),
+  currentPriceStepped: t.Number(),
+  at: t.Number(),
+})
+const ListItemSchema = t.Union([
+  t.Intersect([SingleAuctionWithType, t.Object({ pricing: PricingSchema })]),
+  t.Intersect([ClearingAuctionListItem, t.Object({ pricing: t.Null() })]),
+])
+const AuctionDetailSchema = t.Union([
+  t.Intersect([SingleAuctionWithType, t.Object({})]),
+  t.Intersect([ClearingAuctionWithType, t.Object({})]),
+])
+const FeeRatesSchema = t.Object({ fast: t.Number(), normal: t.Number(), slow: t.Number() })
+const PlaceBidResponseSchema = t.Object({
+  success: t.Boolean(),
+  itemsRemaining: t.Number(),
+  auctionStatus: t.Union([t.Literal('active'), t.Literal('sold')]),
+  bidId: t.String(),
+})
+const ClearingStatusSchema = t.Object({
+  auction: ClearingAuctionFull,
+  progress: t.Object({ itemsRemaining: t.Number() }),
+})
+const BidStatusSchema = t.Union([
+  t.Literal('placed'),
+  t.Literal('payment_pending'),
+  t.Literal('payment_confirmed'),
+  t.Literal('settled'),
+  t.Literal('failed'),
+  t.Literal('refunded'),
+])
+const BidSchema = t.Object({
+  id: t.String(),
+  auctionId: t.String(),
+  bidderAddress: t.String(),
+  bidAmount: t.Number(),
+  quantity: t.Number(),
+  status: BidStatusSchema,
+  escrowAddress: t.Optional(t.String()),
+  transactionId: t.Optional(t.String()),
+  created_at: t.Number(),
+  updated_at: t.Number(),
+})
+const BidsArraySchema = t.Object({ bids: t.Array(BidSchema) })
+const SettlementResponseSchema = t.Object({
+  auctionId: t.String(),
+  clearingPrice: t.Number(),
+  totalQuantity: t.Number(),
+  itemsRemaining: t.Number(),
+  allocations: t.Array(t.Object({ bidId: t.String(), bidderAddress: t.String(), quantity: t.Number() })),
+})
+const MarkBidsSettledResponseSchema = t.Object({
+  success: t.Boolean(),
+  updated: t.Number(),
+  errors: t.Optional(t.Array(t.Object({ bidId: t.String(), error: t.String() }))),
+})
+const ClearingCreateResponseSchema = t.Object({
+  success: t.Boolean(),
+  auctionDetails: t.Object({
+    id: t.String(),
+    inscription_id: t.String(),
+    inscription_ids: t.Array(t.String()),
+    quantity: t.Number(),
+    itemsRemaining: t.Number(),
+    status: AuctionStatus,
+    created_at: t.Number(),
+    updated_at: t.Number(),
+    auction_type: t.Literal('clearing'),
+  }),
 })
 
 // Configure allowed origins for CORS at the API level
@@ -112,8 +238,9 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
     }))
     .use(swagger())
     // Request/Response logging middleware
-    .onRequest(({ request, path }) => {
+    .onRequest(({ request }) => {
       const method = request.method
+      const path = new URL(request.url).pathname
       // Skip logging for static assets and health checks to reduce noise
       if (path.match(/\.(css|js|html|ico|png|jpg|svg)$/) || path === '/health') {
         return
@@ -122,8 +249,9 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         userAgent: request.headers.get('user-agent')?.substring(0, 100),
       })
     })
-    .onAfterHandle(({ request, path, set }) => {
+    .onAfterHandle(({ request, set }) => {
       const method = request.method
+      const path = new URL(request.url).pathname
       const status = set.status || 200
       // Skip logging for static assets and health checks
       if (path.match(/\.(css|js|html|ico|png|jpg|svg)$/) || path === '/health') {
@@ -228,7 +356,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         }),
         response: SuccessResponse(t.Object({
           network: t.String(),
-          items: t.Array(t.Any()),
+          items: t.Array(ListItemSchema),
         }))
       },
     )
@@ -267,7 +395,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         }),
         response: SuccessResponse(t.Object({
           network: t.String(),
-          items: t.Array(t.Any()),
+          items: t.Array(ListItemSchema),
         }))
       },
     )
@@ -298,7 +426,6 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
             pricing: null 
           })
         } catch {
-          set.status = 404
           return error('Auction not found', 'NOT_FOUND')
         }
       }),
@@ -308,8 +435,8 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         response: t.Union([
           SuccessResponse(t.Object({
             network: t.String(),
-            auction: t.Any(),
-            pricing: t.Any(),
+            auction: AuctionDetailSchema,
+            pricing: t.Union([PricingSchema, t.Null()]),
           })),
           ErrorResponse
         ])
@@ -384,7 +511,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
       }),
       { 
         query: t.Object({ network: t.Optional(t.String()) }),
-        response: SuccessResponse(t.Any())
+        response: SuccessResponse(UnknownRecord)
       },
     )
     .post('/auction/:auctionId/status', async ({ params, body, query, set }) =>
@@ -466,7 +593,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         sellerAddress: t.String(),
       }),
       response: t.Union([
-        SuccessResponse(t.Any()),
+        SuccessResponse(UnknownRecord),
         ErrorResponse
       ])
     })
@@ -491,7 +618,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         quantity: t.Optional(t.Number()),
       }),
       response: t.Union([
-        SuccessResponse(t.Any()),
+        SuccessResponse(UnknownRecord),
         ErrorResponse
       ])
     })
@@ -506,7 +633,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
     },
     {
       response: t.Union([
-        SuccessResponse(t.Any()),
+        SuccessResponse(UnknownRecord),
         ErrorResponse
       ])
     })
@@ -521,7 +648,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
     },
     {
       response: t.Union([
-        SuccessResponse(t.Any()),
+        SuccessResponse(UnknownRecord),
         ErrorResponse
       ])
     })
@@ -536,7 +663,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
     },
     {
       response: t.Union([
-        SuccessResponse(t.Any()),
+        SuccessResponse(UnknownRecord),
         ErrorResponse
       ])
     })
@@ -560,7 +687,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         bidIds: t.Array(t.String()),
       }),
       response: t.Union([
-        SuccessResponse(t.Any()),
+        SuccessResponse(UnknownRecord),
         ErrorResponse
       ])
     })
@@ -586,7 +713,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         quantity: t.Optional(t.Number()),
       }),
       response: t.Union([
-        SuccessResponse(t.Any()),
+        SuccessResponse(UnknownRecord),
         ErrorResponse
       ])
     })
@@ -610,7 +737,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         transactionId: t.String(),
       }),
       response: t.Union([
-        SuccessResponse(t.Any()),
+        SuccessResponse(UnknownRecord),
         ErrorResponse
       ])
     })
@@ -633,7 +760,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         auctionId: t.String(),
       }),
       response: t.Union([
-        SuccessResponse(t.Any()),
+        SuccessResponse(UnknownRecord),
         ErrorResponse
       ])
     })
@@ -648,7 +775,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
     },
     {
       response: t.Union([
-        SuccessResponse(t.Any()),
+        SuccessResponse(UnknownRecord),
         ErrorResponse
       ])
     })
@@ -663,7 +790,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
     },
     {
       response: t.Union([
-        SuccessResponse(t.Any()),
+        SuccessResponse(UnknownRecord),
         ErrorResponse
       ])
     })
@@ -701,7 +828,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         sellerAddress: t.Optional(t.String()),
       }),
       response: t.Union([
-        SuccessResponse(t.Any()),
+        SuccessResponse(UnknownRecord),
         ErrorResponse
       ])
     })
@@ -727,19 +854,19 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
     .post('/seed/validate', ({ body }) => success(svcDb.validateSeedPhrase(body?.seed)),
       {
         body: t.Object({ seed: t.Optional(t.String()) }),
-        response: SuccessResponse(t.Any())
+      response: SuccessResponse(UnknownRecord)
       }
     )
     .post('/seed/import', ({ body }) => success(svcDb.importMasterSeed(body?.seed)),
       {
         body: t.Object({ seed: t.Optional(t.String()) }),
-        response: SuccessResponse(t.Any())
+      response: SuccessResponse(UnknownRecord)
       }
     )
     .post('/seed/rotate', ({ body }) => success(svcDb.rotateMasterSeed(body?.newSeed)),
       {
         body: t.Object({ newSeed: t.Optional(t.String()) }),
-        response: SuccessResponse(t.Any())
+      response: SuccessResponse(UnknownRecord)
       }
     )
     .get('/seed/backup-with-warnings', () => success(svcDb.getMasterSeedWithWarnings()))
@@ -749,7 +876,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
     .post('/security/test-encryption', ({ body }) => success(svcDb.testEncryptionRoundTrip(body?.plaintext)),
       {
         body: t.Object({ plaintext: t.Optional(t.String()) }),
-        response: SuccessResponse(t.Any())
+      response: SuccessResponse(UnknownRecord)
       }
     )
     // Fee endpoints
@@ -775,7 +902,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         category: t.Optional(t.String()),
         size: t.Optional(t.Number()),
       }),
-      response: SuccessResponse(t.Any())
+      response: SuccessResponse(UnknownRecord)
     })
     .get('/fees/estimation/:transactionType', ({ params, query }) =>
       withNetworkOverride(query?.network as any, async () => {
@@ -801,10 +928,10 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         currentRate: t.Optional(t.Number()),
         bumpPercent: t.Optional(t.Number()),
       }),
-      response: SuccessResponse(t.Any())
+      response: SuccessResponse(UnknownRecord)
     })
     .post('/fees/test-calculations', () => success({ ok: true }))
-    .get('/auction/:auctionId/fee-info', ({ params, query }) => success(svcDb.getAuctionFeeInfo(params.auctionId, (query?.network as string) || undefined)))
+    .get('/auction/:auctionId/fee-info', ({ params, query }) => success(svcDb.getAuctionFeeInfo(params.auctionId, (query?.network as string) || getBitcoinNetwork())))
     // Monitoring endpoints
     .get('/transaction/:transactionId/status', ({ params, query }) => success(svcDb.monitorTransaction(params.transactionId, (query?.auctionId as string) || undefined)))
     .get('/transaction/:transactionId/monitor', ({ params, query }) => success(svcDb.monitorTransactionReal(params.transactionId, (query?.auctionId as string) || undefined, (query?.network as string) || undefined)))
@@ -812,13 +939,13 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
     .post('/admin/update-all-from-blockchain', () => success(svcDb.updateAllAuctionsFromBlockchain()))
     .get('/admin/detect-failed-transactions', () => success(svcDb.detectFailedTransactions()))
     .get('/auction/:auctionId/transaction-history', ({ params }) => success(svcDb.getTransactionHistory(params.auctionId)))
-    .post('/transaction/handle-failure', ({ body }) => success(svcDb.handleTransactionFailure(body?.transactionId, body?.reason)),
+    .post('/transaction/handle-failure', ({ body }) => success(svcDb.handleTransactionFailure(String(body?.transactionId ?? ''), String(body?.reason ?? ''))),
       {
         body: t.Object({
           transactionId: t.Optional(t.String()),
           reason: t.Optional(t.String()),
         }),
-        response: SuccessResponse(t.Any())
+      response: SuccessResponse(UnknownRecord)
       }
     )
     // Error handler
@@ -968,9 +1095,9 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
           address,
           psbt: psbt.toBase64(),
           inscriptionInfo: {
-            txid,
+            txid: String(txid),
             vout: voutIndex,
-            address: vout.scriptpubkey_address,
+            address: vout.scriptpubkey_address as string | undefined,
             value,
             spent,
           },
@@ -990,7 +1117,18 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         sellerAddress: t.String(),
       }),
       response: t.Union([
-        SuccessResponse(t.Any()),
+        SuccessResponse(t.Object({
+          id: t.String(),
+          address: t.String(),
+          psbt: t.String(),
+          inscriptionInfo: t.Object({
+            txid: t.String(),
+            vout: t.Number(),
+            address: t.Optional(t.String()),
+            value: t.Number(),
+            spent: t.Boolean(),
+          })
+        })),
         ErrorResponse
       ])
     })
@@ -999,14 +1137,14 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
       return success(database.verifyInscriptionOwnership({ inscriptionId, ownerAddress }))
     }, { 
       body: t.Object({ inscriptionId: t.String(), ownerAddress: t.String() }),
-      response: SuccessResponse(t.Any())
+      response: SuccessResponse(UnknownRecord)
     })
     .post('/escrow/create-psbt', ({ body }) => {
       const { auctionId, inscriptionId, ownerAddress } = body
       return success(database.createInscriptionEscrowPSBT({ auctionId, inscriptionId, ownerAddress }))
     }, { 
       body: t.Object({ auctionId: t.String(), inscriptionId: t.String(), ownerAddress: t.String() }),
-      response: SuccessResponse(t.Any())
+      response: SuccessResponse(UnknownRecord)
     })
     .get('/escrow/monitor/:auctionId/:inscriptionId', ({ params }) => {
       const { auctionId, inscriptionId } = params
@@ -1016,8 +1154,8 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
       const { auctionId, status, details } = body
       return success(database.updateInscriptionStatus({ auctionId, status, details }))
     }, { 
-      body: t.Object({ auctionId: t.String(), status: t.String(), details: t.Optional(t.Any()) }),
-      response: SuccessResponse(t.Any())
+      body: t.Object({ auctionId: t.String(), status: t.String(), details: t.Optional(UnknownRecord) }),
+      response: SuccessResponse(t.Object({ ok: t.Boolean(), status: t.String() }))
     })
     .get('/escrow/status/:auctionId', ({ params }) => {
       const { auctionId } = params
@@ -1035,11 +1173,11 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
       const stripped = url.pathname.replace(/^\/api\/?/, '/')
       forwarded.pathname = stripped === '//' ? '/' : stripped
       const method = request.method.toUpperCase()
-      let body: BodyInit | undefined
+      let body: BodyInit | null | undefined
       if (method !== 'GET' && method !== 'HEAD') {
         try {
           const buf = await request.arrayBuffer()
-          body = buf
+          body = buf as BodyInit
         } catch {}
       }
       const forwardedReq = new Request(forwarded.toString(), {
