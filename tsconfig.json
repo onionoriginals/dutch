@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "lib": ["ESNext"],
+    "lib": ["ESNext", "DOM"],
     "target": "ESNext",
     "module": "Preserve",
     "moduleDetection": "force",
@@ -19,6 +19,7 @@
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false,
     "baseUrl": ".",
+    "types": ["bun", "node"],
     "paths": {
       "@originals/dutch": ["packages/dutch/src/index.ts"],
       "@originals/dutch/*": ["packages/dutch/src/*"]

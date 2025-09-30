@@ -7,6 +7,7 @@ async function run() {
     'bip32',
     'tiny-secp256k1',
     'bitcoinjs-lib',
+    'postgres',
   ]
 
   const externalFlags = externals.flatMap((dep) => ['-e', dep])
