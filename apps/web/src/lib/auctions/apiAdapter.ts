@@ -14,6 +14,10 @@ type ApiAuction = {
   current_price?: number
   title?: string
   pricing?: { currentPriceLinear?: number; currentPriceStepped?: number }
+  start_price?: number
+  min_price?: number
+  duration?: number
+  decrement_interval?: number
 }
 
 function mapStatus(s: ApiAuction['status']): 'draft' | 'scheduled' | 'live' | 'ended' {
@@ -109,13 +113,17 @@ export async function queryAuctions(params: AuctionsQuery = {}): Promise<Auction
   return { items: paged, total, page, pageSize }
 }
 
-export async function fetchAuction(id: string): Promise<{ auction: AuctionSummary; pricing?: { currentPriceLinear?: number; currentPriceStepped?: number } } | null> {
+export async function fetchAuction(id: string): Promise<{ 
+  auction: AuctionSummary; 
+  pricing?: { currentPriceLinear?: number; currentPriceStepped?: number };
+  rawAuction?: ApiAuction;
+} | null> {
   const resp = await fetch(`${API_BASE}/auction/${encodeURIComponent(id)}`)
   if (!resp.ok) return null
   const json = await resp.json() as { ok?: boolean; data?: { auction?: ApiAuction; pricing?: { currentPriceLinear?: number; currentPriceStepped?: number } } }
   if (!json?.ok || !json?.data?.auction) return null
   const summary = normalize(json.data.auction as ApiAuction)
-  return { auction: summary, pricing: json.data.pricing }
+  return { auction: summary, pricing: json.data.pricing, rawAuction: json.data.auction }
 }
 
 
