@@ -347,6 +347,15 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         const res = (database as any).placeBid(String(auctionId), String(bidderAddress), Number(quantity ?? 1))
         return res
       } catch (err: any) {
+        // Better error handling for validation errors
+        if (err?.message?.includes('Invalid') || err?.message?.includes('Insufficient') || err?.message?.includes('must be')) {
+          set.status = 400
+          return { error: err.message }
+        }
+        if (err?.message?.includes('not active')) {
+          set.status = 409
+          return { error: err.message }
+        }
         set.status = 500
         return { error: err?.message || 'internal_error' }
       }
@@ -389,7 +398,12 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
           set.status = 400
           return { error: 'auctionId and bidIds[] required' }
         }
-        return (database as any).markBidsSettled(String(auctionId), bidIds.map(String))
+        const result = (database as any).markBidsSettled(String(auctionId), bidIds.map(String))
+        // Return partial success with errors if any bids failed
+        if (result.errors && result.errors.length > 0) {
+          set.status = 207 // Multi-Status
+        }
+        return result
       } catch (err: any) {
         set.status = 500
         return { error: err?.message || 'internal_error' }
@@ -410,6 +424,15 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         }
         return (database as any).createBidPaymentPSBT(String(auctionId), String(bidderAddress), Number(bidAmount), Number(quantity ?? 1))
       } catch (err: any) {
+        // Better error handling for validation errors
+        if (err?.message?.includes('Invalid') || err?.message?.includes('Insufficient') || err?.message?.includes('must be')) {
+          set.status = 400
+          return { error: err.message }
+        }
+        if (err?.message?.includes('not active') || err?.message?.includes('not found')) {
+          set.status = 404
+          return { error: err.message }
+        }
         set.status = 500
         return { error: err?.message || 'internal_error' }
       }
@@ -431,6 +454,15 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         }
         return (database as any).confirmBidPayment(String(bidId), String(transactionId))
       } catch (err: any) {
+        // Better error handling for state transition errors
+        if (err?.message?.includes('Cannot confirm') || err?.message?.includes('Valid transaction')) {
+          set.status = 400
+          return { error: err.message }
+        }
+        if (err?.message?.includes('not found')) {
+          set.status = 404
+          return { error: err.message }
+        }
         set.status = 500
         return { error: err?.message || 'internal_error' }
       }
@@ -450,6 +482,15 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         }
         return (database as any).processAuctionSettlement(String(auctionId))
       } catch (err: any) {
+        // Better error handling for settlement errors
+        if (err?.message?.includes('Cannot settle') || err?.message?.includes('Payment must be confirmed')) {
+          set.status = 400
+          return { error: err.message }
+        }
+        if (err?.message?.includes('not found')) {
+          set.status = 404
+          return { error: err.message }
+        }
         set.status = 500
         return { error: err?.message || 'internal_error' }
       }
