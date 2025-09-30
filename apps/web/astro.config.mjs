@@ -16,6 +16,14 @@ export default defineConfig({
     allowedHosts: true
   },
   vite: {
+    server: {
+      proxy: {
+        '/api': {
+          target: 'http://localhost:3000',
+          changeOrigin: true,
+        }
+      }
+    },
     resolve: {
       // Prefer the "browser" export condition so @originals/dutch resolves to its browser build
       conditions: ['browser'],

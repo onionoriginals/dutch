@@ -25,26 +25,24 @@ import LiveAuctionsSection from '../components/auction/LiveAuctionsSection'
     </header>
 
     <main>
-      <!-- Hero -->
-      <section class="border-b bg-gradient-to-b from-white to-gray-50 py-16 dark:from-gray-900 dark:to-gray-950">
+       <!-- Quick Actions -->
+       <section class="border-b py-12">
         <div class="mx-auto max-w-6xl px-4">
-          <div class="grid grid-cols-1 items-center gap-8 md:grid-cols-2">
-            <div>
-              <h1 class="text-4xl font-bold tracking-tight text-gray-900 dark:text-white md:text-5xl">Run English and Dutch auctions with modern tools</h1>
-              <p class="mt-4 text-lg text-gray-600 dark:text-gray-300">Production-ready components, types, and utilities for building auction experiences quickly.</p>
-              <div class="mt-6 flex flex-wrap gap-3">
-                <a href="/auctions/new" class="button">Create Auction</a>
-                <a href="/auctions" class="button button-secondary">Browse Auctions</a>
+          <div class="rounded-xl border bg-gradient-to-br from-blue-50 to-indigo-50 p-8 shadow-sm dark:border-gray-800 dark:from-gray-900 dark:to-gray-800">
+            <div class="flex flex-col items-center justify-center text-center">
+              <h2 class="text-2xl font-semibold">Create Your Own Auction</h2>
+              <p class="mt-2 max-w-2xl text-sm text-muted-foreground">
+                Set up Dutch auctions in minutes. Configure pricing, timing, and reserve prices with our easy-to-use wizard.
+              </p>
+              <div class="mt-6 flex flex-wrap gap-3 justify-center">
+                <a href="/auctions/new" class="button">Create New Auction</a>
+                <a href="/auctions" class="button button-secondary">Browse All Auctions</a>
               </div>
-            </div>
-            <div class="rounded-xl border bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-              <div class="text-sm text-muted-foreground mb-2">Playground</div>
-              <DemoDutchEditor client:only="react" />
             </div>
           </div>
         </div>
       </section>
-
+      
       <!-- Live Auctions -->
       <section class="border-b py-12">
         <div class="mx-auto max-w-6xl px-4">
@@ -58,24 +56,6 @@ import LiveAuctionsSection from '../components/auction/LiveAuctionsSection'
             </a>
           </div>
           <LiveAuctionsSection client:only="react" />
-        </div>
-      </section>
-
-      <!-- Quick Actions -->
-      <section class="border-b py-12">
-        <div class="mx-auto max-w-6xl px-4">
-          <div class="rounded-xl border bg-gradient-to-br from-blue-50 to-indigo-50 p-8 shadow-sm dark:border-gray-800 dark:from-gray-900 dark:to-gray-800">
-            <div class="flex flex-col items-center justify-center text-center">
-              <h2 class="text-2xl font-semibold">Create Your Own Auction</h2>
-              <p class="mt-2 max-w-2xl text-sm text-muted-foreground">
-                Set up English or Dutch auctions in minutes. Configure pricing, timing, and reserve prices with our easy-to-use wizard.
-              </p>
-              <div class="mt-6 flex flex-wrap gap-3 justify-center">
-                <a href="/auctions/new" class="button">Create New Auction</a>
-                <a href="/auctions" class="button button-secondary">Browse All Auctions</a>
-              </div>
-            </div>
-          </div>
         </div>
       </section>
 

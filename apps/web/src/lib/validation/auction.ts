@@ -20,15 +20,15 @@ export const EnglishAuctionSchema = z.object({
 export const DutchAuctionSchema = z.object({
   title: z.string().min(3, 'Title is too short'),
   description: z.string().max(500).optional().or(z.literal('')),
+  inscriptionIds: z.string().min(1, 'At least one inscription ID is required'),
   startPrice: z.number({ invalid_type_error: 'Start price is required' }).positive('Must be > 0'),
   endPrice: z.number({ invalid_type_error: 'End price is required' }).nonnegative('Must be >= 0'),
   decrementAmount: z.number({ invalid_type_error: 'Decrement amount is required' }).positive('Must be > 0'),
   decrementIntervalSeconds: z.number({ invalid_type_error: 'Decrement interval is required' }).int().positive('Must be > 0'),
-  buyNowPrice: z.number().positive('Must be > 0').optional(),
   startTime: isoDateString,
   endTime: isoDateString
 }).refine((data) => data.endPrice < data.startPrice, {
-  message: 'End price must be less than start price',
+  message: 'End price must be less than start price (Dutch auctions start high and drop)',
   path: ['endPrice']
 }).refine((data) => new Date(data.endTime).getTime() > new Date(data.startTime).getTime(), {
   message: 'End time must be after start time',
@@ -46,7 +46,8 @@ export const englishAuctionStepFields: string[][] = [
 
 export const dutchAuctionStepFields: string[][] = [
   ['title', 'description'],
-  ['startPrice', 'endPrice', 'buyNowPrice'],
+  ['inscriptionIds'],
+  ['startPrice', 'endPrice'],
   ['decrementAmount', 'decrementIntervalSeconds'],
   ['startTime', 'endTime']
 ]

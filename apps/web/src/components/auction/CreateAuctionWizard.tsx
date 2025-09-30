@@ -4,19 +4,17 @@ import { Input } from '../inputs/Input'
 import { NumberInput } from '../inputs/NumberInput'
 import { Textarea } from '../inputs/Textarea'
 import { DateTimePicker } from '../inputs/DateTimePicker'
-import AuctionTypeSelector from './AuctionTypeSelector'
-import { EnglishAuctionSchema, DutchAuctionSchema, englishAuctionStepFields, dutchAuctionStepFields } from '../../lib/validation/auction'
-import type { AuctionType } from '../../types/auction'
-import { normalizeEnglish, normalizeDutch } from '../../utils/normalizeAuction'
+import { DutchAuctionSchema, dutchAuctionStepFields } from '../../lib/validation/auction'
+import { normalizeDutch } from '../../utils/normalizeAuction'
+import { btcToSats, formatSats, btcToUsd, formatCurrency, getBtcUsdRate } from '../../utils/currency'
 
 type DraftShape = {
-  type: AuctionType
   values: any
 }
 
 const DRAFT_KEY = 'auction-create-draft-v1'
 
-function useDraftPersistence(type: AuctionType, values: any) {
+function useDraftPersistence(values: any) {
   const [restored, setRestored] = React.useState(null as Partial<DraftShape> | null)
 
   React.useEffect(() => {
@@ -30,11 +28,11 @@ function useDraftPersistence(type: AuctionType, values: any) {
   }, [])
 
   React.useEffect(() => {
-    const data: DraftShape = { type, values }
+    const data: DraftShape = { values }
     try {
       localStorage.setItem(DRAFT_KEY, JSON.stringify(data))
     } catch {}
-  }, [type, values])
+  }, [values])
 
   function clearDraft() {
     try { localStorage.removeItem(DRAFT_KEY) } catch {}
@@ -56,12 +54,12 @@ function useNavigationGuard(isDirty: boolean) {
 }
 
 export default function CreateAuctionWizard() {
-  const [type, setType] = React.useState('english' as AuctionType)
-  const schema = type === 'english' ? EnglishAuctionSchema : DutchAuctionSchema
-  const steps = type === 'english' ? englishAuctionStepFields : dutchAuctionStepFields
+  const type = 'dutch' as const
+  const schema = DutchAuctionSchema
+  const steps = dutchAuctionStepFields
 
   const [formValues, setFormValues] = React.useState({} as any)
-  const { restored, clearDraft } = useDraftPersistence(type, formValues)
+  const { restored, clearDraft } = useDraftPersistence(formValues)
 
   const [submittedPayload, setSubmittedPayload] = React.useState(null as any | null)
 
@@ -70,20 +68,63 @@ export default function CreateAuctionWizard() {
     return {}
   }, [restored])
 
-  React.useEffect(() => {
-    if (restored?.type) setType(restored.type)
-  }, [restored])
-
   // consider any non-empty form values as dirty
   const isDirty = React.useMemo(() => Object.keys(formValues || {}).length > 0, [formValues])
   useNavigationGuard(isDirty)
 
-  async function onSubmit(values: any) {
-    const payload = type === 'english' ? normalizeEnglish(values) : normalizeDutch(values)
-    await fakeSubmit(payload)
-    clearDraft()
-    setSubmittedPayload(payload)
-  }
+  const onSubmit = React.useCallback(async (values: any) => {
+    const payload = normalizeDutch(values)
+    
+    try {
+      // Parse inscription IDs (one per line)
+      const inscriptionIds = values.inscriptionIds
+        .split('\n')
+        .map((id: string) => id.trim())
+        .filter((id: string) => id.length > 0)
+      
+      // Calculate quantity from number of inscription IDs
+      const quantity = inscriptionIds.length
+      
+      // Calculate duration in seconds
+      const duration = Math.floor(
+        (new Date(values.endTime).getTime() - new Date(values.startTime).getTime()) / 1000
+      )
+      
+      // Make API call to create clearing auction
+      const response = await fetch('/api/clearing/create-auction', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          inscriptionIds: inscriptionIds,
+          quantity: quantity,
+          startPrice: values.startPrice,
+          minPrice: values.endPrice,
+          duration: duration,
+          decrementInterval: values.decrementIntervalSeconds,
+          sellerAddress: 'tb1q...', // TODO: Connect wallet to get seller address
+        }),
+      })
+
+      const result = await response.json()
+      
+      if (!response.ok || !result.ok) {
+        throw new Error(result.error || 'Failed to create auction')
+      }
+
+      console.log('Clearing auction created:', result)
+      clearDraft()
+      setSubmittedPayload({ ...payload, apiResponse: result })
+    } catch (error) {
+      console.error('Failed to create auction:', error)
+      alert(`Failed to create auction: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }, [clearDraft])
+
+  const handleValuesChange = React.useCallback((v: any) => {
+    setFormValues(v)
+  }, [])
 
   if (submittedPayload) {
     return (
@@ -92,13 +133,13 @@ export default function CreateAuctionWizard() {
           <svg className="mx-auto h-16 w-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          <h2 className="text-2xl font-bold mb-2">Auction Created Successfully!</h2>
-          <p className="text-lg mb-6">Your {submittedPayload.type} auction "{submittedPayload.title}" has been created.</p>
+          <h2 className="text-2xl font-bold mb-2">Clearing Auction Created Successfully!</h2>
+          <p className="text-lg mb-6">Your Dutch clearing auction "{submittedPayload.title}" has been created.</p>
           
           <div className="bg-white/80 dark:bg-gray-800/80 rounded-lg p-4 text-left mb-6">
             <h3 className="font-semibold mb-2 text-gray-900 dark:text-gray-100">Auction Details:</h3>
             <div className="text-sm space-y-1 text-gray-700 dark:text-gray-300">
-              <p><strong>Type:</strong> {submittedPayload.type === 'english' ? 'English (Ascending Bid)' : 'Dutch (Descending Price)'}</p>
+              <p><strong>Type:</strong> Dutch Clearing Auction (Uniform Price)</p>
               <p><strong>Title:</strong> {submittedPayload.title}</p>
               {submittedPayload.description && <p><strong>Description:</strong> {submittedPayload.description}</p>}
               <p><strong>Start Time:</strong> {new Date(submittedPayload.timing.startTime).toLocaleString()}</p>
@@ -135,13 +176,10 @@ export default function CreateAuctionWizard() {
   return (
     <div className="space-y-6">
       <header className="border-b border-gray-200 pb-4 dark:border-gray-700">
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Create Auction</h2>
-        <p className="text-gray-600 dark:text-gray-400 mt-1">Set up your auction with detailed pricing and timing configuration</p>
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Create Clearing Auction</h2>
+        <p className="text-gray-600 dark:text-gray-400 mt-1">Set up a uniform-price Dutch auction where multiple items are sold and all winners pay the same clearing price</p>
         <WizardPreviewButton type={type} values={formValues} className="mt-3" />
       </header>
-
-      {/* Type selection independent of form schema */}
-      <AuctionTypeSelector value={type} onChange={setType} className="mb-6" />
 
       <Form
         schema={schema}
@@ -154,7 +192,7 @@ export default function CreateAuctionWizard() {
           <h3 className="text-lg font-medium text-gray-900 dark:text-white">Auction Details</h3>
           <StepProgress total={steps.length + 1} />
         </div>
-        <FormAutosave onValuesChange={setFormValues} />
+        <FormAutosave onValuesChange={handleValuesChange} />
         <FormStepRouter />
 
         {/* Step 1: Details */}
@@ -178,78 +216,110 @@ export default function CreateAuctionWizard() {
           </div>
         </FormStep>
 
-        {/* Step 2: Pricing (conditional) */}
-        {type === 'english' ? (
-          <FormStep fields={steps[1]!}> 
-            <FormField name="startingPrice">
-              <FieldLabel>Starting price</FieldLabel>
-              <NumberInput min={0} inputMode="decimal" />
+        {/* Step 2: Items */}
+        <FormStep fields={steps[1]!}> 
+          <div id="items" className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6 space-y-6">
+            <div>
+              <h4 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Auction Items</h4>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">Specify the inscriptions being auctioned</p>
+            </div>
+            <FormField name="inscriptionIds">
+              <FieldLabel>Inscription IDs (one per line)</FieldLabel>
+              <Textarea 
+                placeholder="e.g.&#10;abc123i0&#10;def456i0&#10;ghi789i0" 
+                rows={6}
+              />
+              <InscriptionCountHelper />
+              <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                Enter inscription IDs in the format: txid+i+vout (one per line)
+              </div>
               <FieldError />
             </FormField>
-            <FormField name="reservePrice">
-              <FieldLabel>Reserve price (optional)</FieldLabel>
-              <NumberInput min={0} inputMode="decimal" />
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+              <p className="text-sm text-blue-900 dark:text-blue-200">
+                💡 <strong>Clearing Auction:</strong> Multiple bidders can place bids. Once enough bids come in to cover all items, the auction clears and everyone pays the same clearing price (the lowest winning bid).
+              </p>
+            </div>
+            <StepNav />
+          </div>
+        </FormStep>
+
+        {/* Step 3: Pricing */}
+        <FormStep fields={steps[2]!}> 
+          <div id="pricing" className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6 space-y-6">
+            <div>
+              <h4 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Pricing</h4>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">Set the starting and ending price for your Dutch auction in BTC</p>
+            </div>
+            <FormField name="startPrice">
+              <FieldLabel>Start price (BTC)</FieldLabel>
+              <NumberInput min={0} step="0.00000001" inputMode="decimal" />
+              <PriceHelper fieldName="startPrice" />
               <FieldError />
             </FormField>
-            <FormField name="bidIncrement">
-              <FieldLabel>Bid increment</FieldLabel>
-              <NumberInput min={0} inputMode="decimal" />
+            <FormField name="endPrice">
+              <FieldLabel>End price (BTC)</FieldLabel>
+              <NumberInput min={0} step="0.00000001" inputMode="decimal" />
+              <PriceHelper fieldName="endPrice" />
+              <EndPriceValidationHelper />
+              <FieldError />
+            </FormField>
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+              <p className="text-sm text-blue-900 dark:text-blue-200">
+                💡 <strong>Dutch Auction:</strong> The price starts high and decreases over time until someone buys or it reaches the end price.
+              </p>
+            </div>
+            <StepNav />
+          </div>
+        </FormStep>
+
+        {/* Step 4: Price Schedule */}
+        <FormStep fields={steps[3]!}> 
+          <div id="schedule" className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6 space-y-6">
+            <div>
+              <h4 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Price Schedule</h4>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">Configure how the price decreases over time</p>
+            </div>
+            <FormField name="decrementAmount">
+              <FieldLabel>Decrement amount (BTC)</FieldLabel>
+              <NumberInput min={0} step="0.00000001" inputMode="decimal" />
+              <PriceHelper fieldName="decrementAmount" />
+              <FieldError />
+            </FormField>
+            <FormField name="decrementIntervalSeconds">
+              <FieldLabel>Decrement interval (seconds)</FieldLabel>
+              <NumberInput min={1} inputMode="numeric" />
+              <FieldError />
+            </FormField>
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+              <p className="text-sm text-blue-900 dark:text-blue-200">
+                💡 The price will drop by the decrement amount every interval until it reaches the end price.
+              </p>
+            </div>
+            <StepNav />
+          </div>
+        </FormStep>
+
+        {/* Step 5: Timing */}
+        <FormStep fields={steps[4]!}> 
+          <div id="timing" className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6 space-y-6">
+            <div>
+              <h4 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Auction Timing</h4>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">Set when your auction starts and ends</p>
+            </div>
+            <QuickTimingControls />
+            <FormField name="startTime">
+              <FieldLabel>Start time</FieldLabel>
+              <DateTimePicker />
+              <FieldError />
+            </FormField>
+            <FormField name="endTime">
+              <FieldLabel>End time</FieldLabel>
+              <DateTimePicker />
               <FieldError />
             </FormField>
             <StepNav />
-          </FormStep>
-        ) : (
-          <>
-            <FormStep fields={steps[1]!}> 
-              <div id="pricing" className="space-y-6">
-              <FormField name="startPrice">
-                <FieldLabel>Start price</FieldLabel>
-                <NumberInput min={0} inputMode="decimal" />
-                <FieldError />
-              </FormField>
-              <FormField name="endPrice">
-                <FieldLabel>End price</FieldLabel>
-                <NumberInput min={0} inputMode="decimal" />
-                <FieldError />
-              </FormField>
-              <FormField name="buyNowPrice">
-                <FieldLabel>Buy now price (optional)</FieldLabel>
-                <NumberInput min={0} inputMode="decimal" />
-                <FieldError />
-              </FormField>
-              <StepNav />
-              </div>
-            </FormStep>
-            <FormStep fields={steps[2]!}> 
-              <FormField name="decrementAmount">
-                <FieldLabel>Decrement amount</FieldLabel>
-                <NumberInput min={0} inputMode="decimal" />
-                <FieldError />
-              </FormField>
-              <FormField name="decrementIntervalSeconds">
-                <FieldLabel>Decrement interval (seconds)</FieldLabel>
-                <NumberInput min={1} inputMode="numeric" />
-                <FieldError />
-              </FormField>
-              <StepNav />
-            </FormStep>
-          </>
-        )}
-
-        {/* Timing */}
-        <FormStep fields={steps[steps.length - 1]!}> 
-          <QuickTimingControls />
-          <FormField name="startTime">
-            <FieldLabel>Start time</FieldLabel>
-            <DateTimePicker />
-            <FieldError />
-          </FormField>
-          <FormField name="endTime">
-            <FieldLabel>End time</FieldLabel>
-            <DateTimePicker />
-            <FieldError />
-          </FormField>
-          <StepNav />
+          </div>
         </FormStep>
 
         {/* Review */}
@@ -261,7 +331,7 @@ export default function CreateAuctionWizard() {
     </div>
   )
 }
-function WizardPreviewButton({ type, values, className }: { type: AuctionType; values: any; className?: string }) {
+function WizardPreviewButton({ type, values, className }: { type: 'dutch'; values: any; className?: string }) {
   const href = React.useMemo(() => {
     if (!type) return '#'
     try {
@@ -281,7 +351,13 @@ function WizardPreviewButton({ type, values, className }: { type: AuctionType; v
 
 
 function StepNav({ submitLabel = 'Next' }: { submitLabel?: string }) {
-  const { back, next, isFirst, isLast } = useFormWizard()
+  const { back, next, isFirst, isLast, form } = useFormWizard()
+  const startPrice = form.watch('startPrice')
+  const endPrice = form.watch('endPrice')
+  
+  // Disable next button if on pricing step and prices are invalid
+  const isPricingInvalid = startPrice && endPrice && typeof startPrice === 'number' && typeof endPrice === 'number' && endPrice >= startPrice
+  
   return (
     <div className="flex justify-between items-center pt-6 mt-6 border-t border-gray-200 dark:border-gray-700">
       <button 
@@ -299,9 +375,14 @@ function StepNav({ submitLabel = 'Next' }: { submitLabel?: string }) {
       </button>
       <button 
         type={isLast ? 'submit' : 'button'} 
-        onClick={isLast ? undefined : next} 
+        onClick={isLast ? undefined : next}
+        disabled={isPricingInvalid}
         aria-label={isLast ? 'Submit form' : 'Next step'}
-        className="px-6 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+        className={`px-6 py-2 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors ${
+          isPricingInvalid
+            ? 'bg-gray-400 text-gray-200 cursor-not-allowed dark:bg-gray-600 dark:text-gray-400'
+            : 'bg-blue-600 text-white hover:bg-blue-700'
+        }`}
       >
         {isLast ? submitLabel : 'Next →'}
       </button>
@@ -327,10 +408,15 @@ function StepProgress({ total }: { total: number }) {
   )
 }
 
-function ReviewBlock({ type }: { type: AuctionType }) {
+function ReviewBlock({ type }: { type: 'dutch' }) {
   const { form } = useFormWizard()
   const values = form.watch()
-  const summary = type === 'english' ? normalizeEnglish(values as any) : normalizeDutch(values as any)
+  const summary = normalizeDutch(values as any)
+  const [btcRate, setBtcRate] = React.useState(95000)
+  
+  React.useEffect(() => {
+    getBtcUsdRate().then(rate => setBtcRate(rate))
+  }, [])
   return (
     <section aria-label="Review" className="space-y-6">
       <div>
@@ -344,7 +430,7 @@ function ReviewBlock({ type }: { type: AuctionType }) {
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-gray-600 dark:text-gray-400">Type:</span>
-              <span className="font-medium">{type === 'english' ? 'English (Ascending Bid)' : 'Dutch (Descending Price)'}</span>
+              <span className="font-medium">Dutch Clearing Auction</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600 dark:text-gray-400">Title:</span>
@@ -355,6 +441,31 @@ function ReviewBlock({ type }: { type: AuctionType }) {
                 <span className="text-gray-600 dark:text-gray-400">Description:</span>
                 <span className="font-medium">{values.description}</span>
               </div>
+            )}
+          </div>
+        </div>
+
+        <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+          <h4 className="font-medium text-gray-900 dark:text-white mb-3">Items</h4>
+          <div className="space-y-2 text-sm">
+            {values.inscriptionIds && (
+              <>
+                <div className="flex justify-between">
+                  <span className="text-gray-600 dark:text-gray-400">Quantity:</span>
+                  <span className="font-medium">
+                    {values.inscriptionIds.split('\n').filter((id: string) => id.trim().length > 0).length} items
+                  </span>
+                </div>
+                <div className="space-y-1">
+                  <span className="text-gray-600 dark:text-gray-400">Inscription IDs:</span>
+                  <div className="text-xs font-mono bg-gray-100 dark:bg-gray-900 p-2 rounded max-h-32 overflow-y-auto">
+                    {values.inscriptionIds.split('\n').map((id: string, i: number) => {
+                      const trimmed = id.trim()
+                      return trimmed ? <div key={i}>{trimmed}</div> : null
+                    })}
+                  </div>
+                </div>
+              </>
             )}
           </div>
         </div>
@@ -376,47 +487,43 @@ function ReviewBlock({ type }: { type: AuctionType }) {
         <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 md:col-span-2">
           <h4 className="font-medium text-gray-900 dark:text-white mb-3">Pricing Configuration</h4>
           <div className="grid gap-4 md:grid-cols-2 text-sm">
-            {type === 'english' ? (
-              <>
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">Starting Price:</span>
-                  <span className="font-medium">${values.startingPrice || 0}</span>
+            <div className="space-y-1">
+              <div className="flex justify-between">
+                <span className="text-gray-600 dark:text-gray-400">Start Price:</span>
+                <span className="font-medium">{values.startPrice || 0} BTC</span>
+              </div>
+              {values.startPrice > 0 && (
+                <div className="text-xs text-gray-500 dark:text-gray-500 text-right">
+                  {formatSats(btcToSats(values.startPrice))} sats ≈ {formatCurrency(btcToUsd(values.startPrice, btcRate), 'USD')}
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">Reserve Price:</span>
-                  <span className="font-medium">${values.reservePrice || 'None'}</span>
+              )}
+            </div>
+            <div className="space-y-1">
+              <div className="flex justify-between">
+                <span className="text-gray-600 dark:text-gray-400">End Price:</span>
+                <span className="font-medium">{values.endPrice || 0} BTC</span>
+              </div>
+              {values.endPrice > 0 && (
+                <div className="text-xs text-gray-500 dark:text-gray-500 text-right">
+                  {formatSats(btcToSats(values.endPrice))} sats ≈ {formatCurrency(btcToUsd(values.endPrice, btcRate), 'USD')}
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">Bid Increment:</span>
-                  <span className="font-medium">${values.bidIncrement || 0}</span>
+              )}
+            </div>
+            <div className="space-y-1">
+              <div className="flex justify-between">
+                <span className="text-gray-600 dark:text-gray-400">Decrement Amount:</span>
+                <span className="font-medium">{values.decrementAmount || 0} BTC</span>
+              </div>
+              {values.decrementAmount > 0 && (
+                <div className="text-xs text-gray-500 dark:text-gray-500 text-right">
+                  {formatSats(btcToSats(values.decrementAmount))} sats ≈ {formatCurrency(btcToUsd(values.decrementAmount, btcRate), 'USD')}
                 </div>
-              </>
-            ) : (
-              <>
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">Start Price:</span>
-                  <span className="font-medium">${values.startPrice || 0}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">End Price:</span>
-                  <span className="font-medium">${values.endPrice || 0}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">Decrement Amount:</span>
-                  <span className="font-medium">${values.decrementAmount || 0}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">Decrement Interval:</span>
-                  <span className="font-medium">{values.decrementIntervalSeconds || 0}s</span>
-                </div>
-                {values.buyNowPrice && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-600 dark:text-gray-400">Buy Now Price:</span>
-                    <span className="font-medium">${values.buyNowPrice}</span>
-                  </div>
-                )}
-              </>
-            )}
+              )}
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-600 dark:text-gray-400">Decrement Interval:</span>
+              <span className="font-medium">{values.decrementIntervalSeconds || 0}s</span>
+            </div>
           </div>
         </div>
       </div>
@@ -454,11 +561,68 @@ function FormStepRouter() {
   return null
 }
 
-async function fakeSubmit(payload: unknown) {
-  await new Promise((r) => setTimeout(r, 300))
-  // eslint-disable-next-line no-console
-  console.log('Normalized submit payload', payload)
+function PriceHelper({ fieldName }: { fieldName: string }) {
+  const { form } = useFormWizard()
+  const value = form.watch(fieldName)
+  const [btcRate, setBtcRate] = React.useState(95000)
+  
+  React.useEffect(() => {
+    getBtcUsdRate().then(rate => setBtcRate(rate))
+  }, [])
+  
+  if (!value || typeof value !== 'number' || value <= 0) {
+    return null
+  }
+  
+  const sats = btcToSats(value)
+  const usd = btcToUsd(value, btcRate)
+  
+  return (
+    <div className="text-xs text-gray-600 dark:text-gray-400 mt-1 space-y-0.5">
+      <div>≈ {formatSats(sats)} sats</div>
+      <div>≈ {formatCurrency(usd, 'USD')} <span className="text-gray-500 dark:text-gray-500">(@${formatSats(btcRate)}/BTC)</span></div>
+    </div>
+  )
 }
+
+function EndPriceValidationHelper() {
+  const { form } = useFormWizard()
+  const startPrice = form.watch('startPrice')
+  const endPrice = form.watch('endPrice')
+  
+  // Show warning if both prices are set and end price is not less than start price
+  if (startPrice && endPrice && typeof startPrice === 'number' && typeof endPrice === 'number') {
+    if (endPrice >= startPrice) {
+      return (
+        <div className="text-xs text-red-600 dark:text-red-400 mt-1">
+          ⚠️ End price must be less than start price ({startPrice} BTC) for Dutch auctions
+        </div>
+      )
+    }
+  }
+  
+  return null
+}
+
+function InscriptionCountHelper() {
+  const { form } = useFormWizard()
+  const inscriptionIds = form.watch('inscriptionIds') || ''
+  
+  const count = inscriptionIds
+    .split('\n')
+    .map((id: string) => id.trim())
+    .filter((id: string) => id.length > 0)
+    .length
+  
+  if (count === 0) return null
+  
+  return (
+    <div className="text-sm font-medium text-blue-600 dark:text-blue-400 mt-2">
+      📦 {count} item{count !== 1 ? 's' : ''} will be auctioned
+    </div>
+  )
+}
+
 
 function QuickTimingControls() {
   const { form } = useFormWizard()
@@ -557,7 +721,7 @@ function QuickTimingControls() {
         <div className="flex items-end">
           <button
             type="button"
-            className="button"
+            className="btn btn-primary px-4"
             onClick={() => applyChanges(daysFromNow, presetKey)}
           >
             Apply

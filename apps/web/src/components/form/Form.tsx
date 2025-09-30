@@ -54,8 +54,26 @@ export function FormStep(props: FormStepProps) {
 (FormStep as any).__isFormStep = true
 
 export function Form<TValues extends Record<string, any>>({ schema, defaultValues, onSubmit, children, className }: any) {
+  const stepAwareResolver = React.useMemo(() => {
+    return (values: any, context: unknown, options: any) => {
+      const names: string[] | undefined = options?.names
+      // When validating specific fields (e.g., during step navigation), pick only those from the schema
+      // Handle schemas with refinements (ZodEffects) which don't have .pick()
+      let pickedSchema = schema
+      if (Array.isArray(names) && names.length > 0) {
+        // Get the inner schema if it's a ZodEffects
+        const innerSchema = (schema as any)._def?.schema || schema
+        if (typeof innerSchema.pick === 'function') {
+          pickedSchema = innerSchema.pick(Object.fromEntries(names.map((n) => [n, true])))
+        }
+      }
+      const resolver = zodResolver(pickedSchema as any)
+      return resolver(values, context, options)
+    }
+  }, [schema])
+
   const methods = useForm<TValues>({
-    resolver: zodResolver(schema as any),
+    resolver: stepAwareResolver as any,
     defaultValues: defaultValues as any,
     mode: 'onBlur',
     reValidateMode: 'onChange',
@@ -66,20 +84,21 @@ export function Form<TValues extends Record<string, any>>({ schema, defaultValue
 
   const allChildren = React.Children.toArray(children)
 
-  function collectSteps(nodes: React.ReactNode): React.ReactElement<FormStepProps>[] {
-    const collected: React.ReactElement<FormStepProps>[] = []
-    React.Children.forEach(nodes, (child) => {
-      if (!child) return
-      if (isFormStep(child)) {
-        collected.push(child)
-      } else if (React.isValidElement(child) && child.type === React.Fragment) {
-        collected.push(...collectSteps(child.props.children))
-      }
-    })
-    return collected
-  }
-
-  const steps = collectSteps(children)
+  const steps = React.useMemo(() => {
+    function collectSteps(nodes: React.ReactNode): React.ReactElement<FormStepProps>[] {
+      const collected: React.ReactElement<FormStepProps>[] = []
+      React.Children.forEach(nodes, (child) => {
+        if (!child) return
+        if (isFormStep(child)) {
+          collected.push(child)
+        } else if (React.isValidElement(child) && child.type === React.Fragment) {
+          collected.push(...collectSteps(child.props.children))
+        }
+      })
+      return collected
+    }
+    return collectSteps(children)
+  }, [children])
 
   const currentStep = steps[stepIndex]
   const currentStepFields = currentStep?.props.fields ?? []
@@ -88,23 +107,24 @@ export function Form<TValues extends Record<string, any>>({ schema, defaultValue
   const isFirst = stepIndex === 0
   const isLast = stepIndex === stepsCount - 1
 
-  async function next() {
+  const next = React.useCallback(async () => {
     const isValid = await methods.trigger(currentStepFields as any, { shouldFocus: true })
     if (!isValid) return
+    
     if (isLast) {
       await methods.handleSubmit(onSubmit)()
     } else {
       setStepIndex((i) => Math.min(i + 1, stepsCount - 1))
     }
-  }
+  }, [currentStepFields, stepIndex, isLast, stepsCount, methods, onSubmit])
 
-  function back() {
+  const back = React.useCallback(() => {
     setStepIndex((i) => Math.max(i - 1, 0))
-  }
+  }, [])
 
-  function goTo(index: number) {
+  const goTo = React.useCallback((index: number) => {
     setStepIndex(() => Math.min(Math.max(index, 0), stepsCount - 1))
-  }
+  }, [stepsCount])
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLFormElement>) {
     if (event.key === 'Enter' && !isLast) {
@@ -114,7 +134,7 @@ export function Form<TValues extends Record<string, any>>({ schema, defaultValue
     }
   }
 
-  const wizardContext: FormWizardContextValue = {
+  const wizardContext: FormWizardContextValue = React.useMemo(() => ({
     stepIndex,
     stepsCount,
     next,
@@ -124,18 +144,21 @@ export function Form<TValues extends Record<string, any>>({ schema, defaultValue
     isLast,
     currentStepFields,
     form: methods
-  }
+  }), [stepIndex, stepsCount, next, back, goTo, isFirst, isLast, currentStepFields, methods])
 
-  function renderFiltered(nodes: React.ReactNode, levelKey: string): React.ReactNode {
+  // Track step index as we traverse the tree
+  function renderFiltered(nodes: React.ReactNode, levelKey: string, stepCounter = { value: 0 }): React.ReactNode {
     return React.Children.map(nodes, (child, index) => {
       if (!child) return child
       if (isFormStep(child)) {
-        return steps.indexOf(child) === stepIndex ? React.cloneElement(child, { key: `${levelKey}-step-${index}` }) : null
+        const thisStepIndex = stepCounter.value++
+        const isCurrentStep = thisStepIndex === stepIndex
+        return isCurrentStep ? React.cloneElement(child, { key: `${levelKey}-step-${index}` }) : null
       }
       if (React.isValidElement(child) && child.type === React.Fragment) {
         return (
           <React.Fragment key={`${levelKey}-frag-${index}`}>
-            {renderFiltered(child.props.children, `${levelKey}-frag-${index}`)}
+            {renderFiltered(child.props.children, `${levelKey}-frag-${index}`, stepCounter)}
           </React.Fragment>
         )
       }
@@ -153,7 +176,7 @@ export function Form<TValues extends Record<string, any>>({ schema, defaultValue
           onKeyDown={handleKeyDown}
           noValidate
         >
-          {renderFiltered(children, 'root')}
+          {renderFiltered(children, 'root', { value: 0 })}
         </form>
       </FormProvider>
     </FormWizardContext.Provider>
