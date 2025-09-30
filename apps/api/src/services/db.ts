@@ -1,3 +1,5 @@
+import { logger, redactSensitiveData } from '../utils/logger'
+
 type AuditLog = {
   time: number
   operation: string
@@ -33,14 +35,14 @@ const state = {
 }
 
 function logAudit(operation: string, details?: Record<string, unknown>) {
-  const sanitizedDetails = details ? JSON.parse(JSON.stringify(details)) : undefined
-  if (sanitizedDetails && typeof sanitizedDetails.seed === 'string') {
-    sanitizedDetails.seed = '***redacted***'
-  }
-  if (sanitizedDetails && typeof sanitizedDetails.newSeed === 'string') {
-    sanitizedDetails.newSeed = '***redacted***'
-  }
+  // Use the new logger with automatic redaction
+  const sanitizedDetails = details ? (redactSensitiveData(details) as Record<string, unknown>) : undefined
+  
+  // Store in audit logs with redacted data
   state.auditLogs.unshift({ time: Date.now(), operation, details: sanitizedDetails })
+  
+  // Also log to structured logger for observability
+  logger.info(`Audit: ${operation}`, { operation, ...sanitizedDetails })
 }
 
 function getOrInitAuction(auctionId: string): Auction {

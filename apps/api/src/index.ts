@@ -5,7 +5,11 @@ import { helloDutch } from '@originals/dutch'
 import { db as packageDb, getBitcoinNetwork, version, SecureDutchyDatabase } from '@originals/dutch'
 import { db as svcDb } from './services/db'
 import * as bitcoin from 'bitcoinjs-lib'
+import { logger } from './utils/logger'
 type BodyInit = Blob | ArrayBuffer | DataView | Uint8Array | ReadableStream | null | string
+
+// Track server start time for uptime metrics
+const SERVER_START_TIME = Date.now()
 
 // Configure allowed origins for CORS at the API level
 const allowedOriginsFromEnv = (Bun.env.ALLOWED_ORIGINS || '')
@@ -102,6 +106,27 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
       credentials: true,
     }))
     .use(swagger())
+    // Request/Response logging middleware
+    .onRequest(({ request, path }) => {
+      const method = request.method
+      // Skip logging for static assets and health checks to reduce noise
+      if (path.match(/\.(css|js|html|ico|png|jpg|svg)$/) || path === '/health') {
+        return
+      }
+      logger.request(method, path, {
+        userAgent: request.headers.get('user-agent')?.substring(0, 100),
+      })
+    })
+    .onAfterHandle(({ request, path, set }) => {
+      const method = request.method
+      const status = set.status || 200
+      // Skip logging for static assets and health checks
+      if (path.match(/\.(css|js|html|ico|png|jpg|svg)$/) || path === '/health') {
+        return
+      }
+      // Note: We don't have access to request start time in this hook,
+      // so duration is not available. For production, consider using onBeforeHandle to track timing.
+    })
     // Root: serve built web UI index.html
     .get('/', async () => {
       try {
@@ -119,15 +144,58 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
     .get('/hello', () => ({ message: helloDutch('World') }))
     .get('/health', async ({ query }) =>
       await withNetworkOverride(query?.network as any, async () => {
-        const auctions = await (database as any).listAuctions()
+        const startTime = Date.now()
+        let dbConnected = false
+        let dbResponseTime: number | null = null
+        let auctions: any[] = []
+        
+        try {
+          // Test DB connectivity by listing auctions
+          const dbStart = Date.now()
+          auctions = await (database as any).listAuctions()
+          dbResponseTime = Date.now() - dbStart
+          dbConnected = true
+        } catch (err: any) {
+          logger.error('Health check DB query failed', { error: err.message })
+          dbConnected = false
+        }
+
         const active = auctions.filter((a: any) => a.status === 'active').length
         const sold = auctions.filter((a: any) => a.status === 'sold').length
         const expired = auctions.filter((a: any) => a.status === 'expired').length
+        
+        // Calculate uptime
+        const uptimeMs = Date.now() - SERVER_START_TIME
+        const uptimeSeconds = Math.floor(uptimeMs / 1000)
+        const uptimeMinutes = Math.floor(uptimeSeconds / 60)
+        const uptimeHours = Math.floor(uptimeMinutes / 60)
+        const uptimeDays = Math.floor(uptimeHours / 24)
+
         return {
+          status: dbConnected ? 'healthy' : 'degraded',
           ok: true,
-          network: getBitcoinNetwork(),
+          timestamp: new Date().toISOString(),
           version,
+          network: getBitcoinNetwork(),
+          uptime: {
+            milliseconds: uptimeMs,
+            seconds: uptimeSeconds,
+            human: uptimeDays > 0
+              ? `${uptimeDays}d ${uptimeHours % 24}h ${uptimeMinutes % 60}m`
+              : uptimeHours > 0
+              ? `${uptimeHours}h ${uptimeMinutes % 60}m ${uptimeSeconds % 60}s`
+              : `${uptimeMinutes}m ${uptimeSeconds % 60}s`,
+          },
+          database: {
+            connected: dbConnected,
+            responseTimeMs: dbResponseTime,
+          },
           counts: { active, sold, expired, total: auctions.length },
+          environment: {
+            nodeEnv: Bun.env.NODE_ENV || 'development',
+            platform: 'bun',
+            bunVersion: Bun.version,
+          },
         }
       }),
       {
@@ -593,22 +661,47 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
       const body = await readJson(request)
       return svcDb.handleTransactionFailure((body as any)?.transactionId, (body as any)?.reason)
     })
-    // Error handler
-    .onError(({ code, error, set }) => {
+    // Error handler with structured logging
+    .onError(({ code, error, set, request }) => {
       const message = (error as Error)?.message || 'Internal Error'
+      const method = request.method
+      const path = new URL(request.url).pathname
+      
       if (code === 'VALIDATION') {
         set.status = 400
+        logger.warn('Validation error', { 
+          method, 
+          path, 
+          code, 
+          error: message,
+          type: 'validation',
+        })
         return { error: message }
       }
       if (/not\s*found/i.test(message)) {
         set.status = 404
+        logger.info('Resource not found', { method, path, error: message })
         return { error: 'Not Found' }
       }
       if ((error as any)?.name === 'ValidationError' || (error as any)?.type === 'validation' || (error as any)?.status === 400 || /required|expected|invalid|must/i.test(message)) {
         set.status = 400
+        logger.warn('Bad request', { 
+          method, 
+          path, 
+          error: message,
+          errorName: (error as any)?.name,
+          type: 'validation',
+        })
         return { error: message }
       }
       set.status = 500
+      logger.error('Internal server error', { 
+        method, 
+        path, 
+        error: message,
+        stack: (error as Error)?.stack?.split('\n').slice(0, 3).join('\n'), // First 3 lines of stack
+        errorName: (error as any)?.name,
+      })
       return { error: message }
     })
 
@@ -683,7 +776,19 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         const outspend = outspends?.[voutIndex]
         const spent = !!outspend?.spent
         const ownerMatches = String(vout?.scriptpubkey_address || '') === String(sellerAddress)
-        console.log('ownership-check', { sellerAddress, voutAddress: vout?.scriptpubkey_address, spent })
+        
+        // Log ownership check with redaction
+        logger.info('Ownership verification', {
+          operation: 'ownership-check',
+          inscriptionId: asset as string,
+          ownerMatches,
+          spent,
+          // Addresses are intentionally logged as they may be needed for debugging,
+          // but the logger will redact them based on field names
+          sellerAddress,
+          voutAddress: vout?.scriptpubkey_address,
+        })
+        
         if (!ownerMatches) {
           return new Response(JSON.stringify({ error: 'Ownership mismatch for inscription UTXO' }), {
             status: 403,
@@ -754,7 +859,11 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
           },
         }
       } catch (err: any) {
-        console.error('create-auction error', err)
+        logger.error('Auction creation failed', {
+          operation: 'create-auction',
+          error: err?.message || 'Unknown error',
+          stack: err?.stack?.split('\n').slice(0, 3).join('\n'),
+        })
         return new Response(JSON.stringify({ error: 'Internal server error' }), {
           status: 500,
           headers: { 'content-type': 'application/json' },
@@ -854,11 +963,24 @@ if (import.meta.main) {
   const hostname = Bun.env.HOST ?? '::'
   let port = Bun.env.PORT ? parseInt(Bun.env.PORT, 10) : 3000
   if (isNaN(port)) {
-    console.error('Invalid PORT environment variable. Using default port 3000.')
+    logger.error('Invalid PORT environment variable. Using default port 3000.')
     port = 3000
   }
   app.listen({ port, hostname })
   const advertisedHost = hostname === '::' ? '[::1]' : hostname
-  console.log(`API listening on http://${advertisedHost}:${port}`)
+  
+  logger.info('API server started', {
+    host: advertisedHost,
+    port,
+    version,
+    network: getBitcoinNetwork(),
+    environment: Bun.env.NODE_ENV || 'development',
+    bunVersion: Bun.version,
+    logLevel: Bun.env.LOG_LEVEL || 'info',
+    logFormat: Bun.env.LOG_FORMAT || 'text',
+  })
+  
+  // Also log to console for easy visibility during development
+  console.log(`✓ API listening on http://${advertisedHost}:${port}`)
 }
 
