@@ -1,4 +1,4 @@
-import { Elysia, t } from 'elysia'
+import { Elysia, t, type TSchema } from 'elysia'
 import { swagger } from '@elysiajs/swagger'
 import { cors } from '@elysiajs/cors'
 import { helloDutch } from '@originals/dutch'
@@ -6,10 +6,148 @@ import { db as packageDb, getBitcoinNetwork, version, SecureDutchyDatabase } fro
 import { db as svcDb } from './services/db'
 import * as bitcoin from 'bitcoinjs-lib'
 import { logger } from './utils/logger'
-type BodyInit = Blob | ArrayBuffer | DataView | Uint8Array | ReadableStream | null | string
 
 // Track server start time for uptime metrics
 const SERVER_START_TIME = Date.now()
+// Standard response schemas
+const SuccessResponse = <T extends TSchema>(dataSchema: T) =>
+  t.Object({
+    ok: t.Literal(true),
+    data: dataSchema,
+  })
+
+const ErrorResponse = t.Object({
+  ok: t.Literal(false),
+  error: t.String(),
+  code: t.Optional(t.String()),
+})
+
+// Reusable schemas
+const UnknownRecord = t.Record(t.String(), t.Unknown())
+const AuctionStatus = t.Union([t.Literal('active'), t.Literal('sold'), t.Literal('expired')])
+const SingleAuctionBase = t.Object({
+  id: t.String(),
+  inscription_id: t.String(),
+  start_price: t.Number(),
+  min_price: t.Number(),
+  current_price: t.Number(),
+  duration: t.Number(),
+  decrement_interval: t.Number(),
+  start_time: t.Number(),
+  end_time: t.Number(),
+  status: AuctionStatus,
+  auction_address: t.String(),
+  encrypted_private_key: t.Optional(t.String()),
+  created_at: t.Number(),
+  updated_at: t.Number(),
+  buyer_address: t.Optional(t.String()),
+  transaction_id: t.Optional(t.String()),
+})
+const SingleAuctionWithType = t.Intersect([
+  SingleAuctionBase,
+  t.Object({ auction_type: t.Literal('single') }),
+])
+const ClearingAuctionFull = t.Object({
+  id: t.String(),
+  inscription_id: t.String(),
+  inscription_ids: t.Array(t.String()),
+  quantity: t.Number(),
+  itemsRemaining: t.Number(),
+  status: AuctionStatus,
+  start_price: t.Number(),
+  min_price: t.Number(),
+  duration: t.Number(),
+  decrement_interval: t.Number(),
+  created_at: t.Number(),
+  updated_at: t.Number(),
+})
+const ClearingAuctionWithType = t.Intersect([
+  ClearingAuctionFull,
+  t.Object({ auction_type: t.Literal('clearing') }),
+])
+// List items omit pricing fields for clearing auctions per listAuctions()
+const ClearingAuctionListItem = t.Object({
+  id: t.String(),
+  inscription_id: t.String(),
+  inscription_ids: t.Array(t.String()),
+  quantity: t.Number(),
+  itemsRemaining: t.Number(),
+  status: AuctionStatus,
+  created_at: t.Number(),
+  updated_at: t.Number(),
+  auction_type: t.Literal('clearing'),
+})
+const PricingSchema = t.Object({
+  currentPriceLinear: t.Number(),
+  currentPriceStepped: t.Number(),
+  at: t.Number(),
+})
+const ListItemSchema = t.Union([
+  t.Intersect([SingleAuctionWithType, t.Object({ pricing: PricingSchema })]),
+  t.Intersect([ClearingAuctionListItem, t.Object({ pricing: t.Null() })]),
+])
+const AuctionDetailSchema = t.Union([
+  t.Intersect([SingleAuctionWithType, t.Object({})]),
+  t.Intersect([ClearingAuctionWithType, t.Object({})]),
+])
+const FeeRatesSchema = t.Object({ fast: t.Number(), normal: t.Number(), slow: t.Number() })
+const PlaceBidResponseSchema = t.Object({
+  success: t.Boolean(),
+  itemsRemaining: t.Number(),
+  auctionStatus: t.Union([t.Literal('active'), t.Literal('sold')]),
+  bidId: t.String(),
+})
+const ClearingStatusSchema = t.Object({
+  auction: ClearingAuctionFull,
+  progress: t.Object({ itemsRemaining: t.Number() }),
+})
+const BidStatusSchema = t.Union([
+  t.Literal('placed'),
+  t.Literal('payment_pending'),
+  t.Literal('payment_confirmed'),
+  t.Literal('settled'),
+  t.Literal('failed'),
+  t.Literal('refunded'),
+])
+const BidSchema = t.Object({
+  id: t.String(),
+  auctionId: t.String(),
+  bidderAddress: t.String(),
+  bidAmount: t.Number(),
+  quantity: t.Number(),
+  status: BidStatusSchema,
+  escrowAddress: t.Optional(t.String()),
+  transactionId: t.Optional(t.String()),
+  created_at: t.Number(),
+  updated_at: t.Number(),
+})
+const BidsArraySchema = t.Object({ bids: t.Array(BidSchema) })
+const SettlementResponseSchema = t.Object({
+  auctionId: t.String(),
+  clearingPrice: t.Number(),
+  totalQuantity: t.Number(),
+  itemsRemaining: t.Number(),
+  allocations: t.Array(t.Object({ bidId: t.String(), bidderAddress: t.String(), quantity: t.Number() })),
+})
+const MarkBidsSettledResponseSchema = t.Object({
+  success: t.Boolean(),
+  updated: t.Number(),
+  errors: t.Optional(t.Array(t.Object({ bidId: t.String(), error: t.String() }))),
+})
+const ClearingCreateResponseSchema = t.Object({
+  success: t.Boolean(),
+  auctionDetails: t.Object({
+    id: t.String(),
+    inscription_id: t.String(),
+    inscription_ids: t.Array(t.String()),
+    quantity: t.Number(),
+    itemsRemaining: t.Number(),
+    status: AuctionStatus,
+    created_at: t.Number(),
+    updated_at: t.Number(),
+    auction_type: t.Literal('clearing'),
+  }),
+})
 
 // Configure allowed origins for CORS at the API level
 const allowedOriginsFromEnv = (Bun.env.ALLOWED_ORIGINS || '')
@@ -43,21 +181,14 @@ function isOriginAllowed(origin: string): boolean {
   }
 }
 
-// Utility for reading JSON bodies (for endpoints using Request)
-async function readJson(request: Request) {
-  try {
-    const contentType = request.headers.get('content-type') || ''
-    if (contentType.includes('application/json')) return await request.json()
-    const text = await request.text()
-    if (!text) return {}
-    try {
-      return JSON.parse(text)
-    } catch {
-      return {}
-    }
-  } catch {
-    return {}
-  }
+// Helper function to create standardized success response
+function success<T>(data: T) {
+  return { ok: true as const, data }
+}
+
+// Helper function to create standardized error response
+function error(message: string, code?: string) {
+  return { ok: false as const, error: message, code }
 }
 
 // Utility for network override (from the "HEAD" branch)
@@ -107,8 +238,9 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
     }))
     .use(swagger())
     // Request/Response logging middleware
-    .onRequest(({ request, path }) => {
+    .onRequest(({ request }) => {
       const method = request.method
+      const path = new URL(request.url).pathname
       // Skip logging for static assets and health checks to reduce noise
       if (path.match(/\.(css|js|html|ico|png|jpg|svg)$/) || path === '/health') {
         return
@@ -117,8 +249,9 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         userAgent: request.headers.get('user-agent')?.substring(0, 100),
       })
     })
-    .onAfterHandle(({ request, path, set }) => {
+    .onAfterHandle(({ request, set }) => {
       const method = request.method
+      const path = new URL(request.url).pathname
       const status = set.status || 200
       // Skip logging for static assets and health checks
       if (path.match(/\.(css|js|html|ico|png|jpg|svg)$/) || path === '/health') {
@@ -141,7 +274,12 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         return new Response('Failed to load index.html', { status: 500, headers: { 'content-type': 'text/plain; charset=utf-8' } })
       }
     })
-    .get('/hello', () => ({ message: helloDutch('World') }))
+    .get('/hello', () => 
+      success({ message: helloDutch('World') }),
+      {
+        response: SuccessResponse(t.Object({ message: t.String() }))
+      }
+    )
     .get('/health', async ({ query }) =>
       await withNetworkOverride(query?.network as any, async () => {
         const startTime = Date.now()
@@ -163,43 +301,24 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         const active = auctions.filter((a: any) => a.status === 'active').length
         const sold = auctions.filter((a: any) => a.status === 'sold').length
         const expired = auctions.filter((a: any) => a.status === 'expired').length
-        
-        // Calculate uptime
-        const uptimeMs = Date.now() - SERVER_START_TIME
-        const uptimeSeconds = Math.floor(uptimeMs / 1000)
-        const uptimeMinutes = Math.floor(uptimeSeconds / 60)
-        const uptimeHours = Math.floor(uptimeMinutes / 60)
-        const uptimeDays = Math.floor(uptimeHours / 24)
-
-        return {
-          status: dbConnected ? 'healthy' : 'degraded',
-          ok: true,
-          timestamp: new Date().toISOString(),
-          version,
+        return success({
           network: getBitcoinNetwork(),
-          uptime: {
-            milliseconds: uptimeMs,
-            seconds: uptimeSeconds,
-            human: uptimeDays > 0
-              ? `${uptimeDays}d ${uptimeHours % 24}h ${uptimeMinutes % 60}m`
-              : uptimeHours > 0
-              ? `${uptimeHours}h ${uptimeMinutes % 60}m ${uptimeSeconds % 60}s`
-              : `${uptimeMinutes}m ${uptimeSeconds % 60}s`,
-          },
-          database: {
-            connected: dbConnected,
-            responseTimeMs: dbResponseTime,
-          },
+          version,
           counts: { active, sold, expired, total: auctions.length },
-          environment: {
-            nodeEnv: Bun.env.NODE_ENV || 'development',
-            platform: 'bun',
-            bunVersion: Bun.version,
-          },
-        }
+        })
       }),
       {
         query: t.Object({ network: t.Optional(t.String()) }),
+        response: SuccessResponse(t.Object({
+          network: t.String(),
+          version: t.String(),
+          counts: t.Object({
+            active: t.Number(),
+            sold: t.Number(),
+            expired: t.Number(),
+            total: t.Number(),
+          })
+        }))
       },
     )
     // Listings
@@ -227,7 +346,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
             }
             return { ...a, pricing: null }
           })
-          return { ok: true, network: getBitcoinNetwork(), items: enriched }
+          return success({ network: getBitcoinNetwork(), items: enriched })
         }),
       {
         query: t.Object({
@@ -235,6 +354,10 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
           type: t.Optional(t.Union([t.Literal('single'), t.Literal('clearing')])) ,
           network: t.Optional(t.String()),
         }),
+        response: SuccessResponse(t.Object({
+          network: t.String(),
+          items: t.Array(ListItemSchema),
+        }))
       },
     )
     // Duplicate under /api for web client
@@ -262,7 +385,7 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
             }
             return { ...a, pricing: null }
           })
-          return { ok: true, network: getBitcoinNetwork(), items: enriched }
+          return success({ network: getBitcoinNetwork(), items: enriched })
         }),
       {
         query: t.Object({
@@ -270,6 +393,10 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
           type: t.Optional(t.Union([t.Literal('single'), t.Literal('clearing')])) ,
           network: t.Optional(t.String()),
         }),
+        response: SuccessResponse(t.Object({
+          network: t.String(),
+          items: t.Array(ListItemSchema),
+        }))
       },
     )
     // Auction details
@@ -284,74 +411,135 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
           }
           const linear = (database as any).calculateCurrentPrice(a, now)
           const stepped = (database as any).calculatePriceWithIntervals(a, now)
-          return {
-            ok: true,
+          return success({
             network: getBitcoinNetwork(),
             auction: { ...a, auction_type: 'single' as const },
             pricing: { currentPriceLinear: linear.currentPrice, currentPriceStepped: stepped.currentPrice, at: now },
-          }
+          })
         }
         // Try clearing auction status
         try {
           const s = (database as any).getClearingAuctionStatus(params.auctionId)
-          return { ok: true, network: getBitcoinNetwork(), auction: { ...s.auction, auction_type: 'clearing' as const }, pricing: null }
+          return success({ 
+            network: getBitcoinNetwork(), 
+            auction: { ...s.auction, auction_type: 'clearing' as const }, 
+            pricing: null 
+          })
         } catch {
-          return { ok: false, error: 'Auction not found' }
+          return error('Auction not found', 'NOT_FOUND')
         }
       }),
       {
         params: t.Object({ auctionId: t.String() }),
         query: t.Object({ network: t.Optional(t.String()) }),
+        response: t.Union([
+          SuccessResponse(t.Object({
+            network: t.String(),
+            auction: AuctionDetailSchema,
+            pricing: t.Union([PricingSchema, t.Null()]),
+          })),
+          ErrorResponse
+        ])
       },
     )
     // Pricing endpoints
-    .get('/price/:auctionId', async ({ params, query }) =>
+    .get('/price/:auctionId', async ({ params, query, set }) =>
       await withNetworkOverride(query?.network as any, async () => {
         const now = Math.floor(Date.now() / 1000)
         const a = await (database as any).getAuction(params.auctionId)
-        if (!a) return { ok: false, error: 'Auction not found' }
+        if (!a) {
+          set.status = 404
+          return error('Auction not found', 'NOT_FOUND')
+        }
         if (a.status === 'active' && a.end_time <= now) {
           await (database as any).updateAuctionStatus(a.id, 'expired')
           a.status = 'expired'
         }
         const linear = (database as any).calculateCurrentPrice(a, now)
-        return { ok: true, network: getBitcoinNetwork(), auctionId: a.id, price: linear.currentPrice, status: linear.auctionStatus, at: now }
+        return success({ network: getBitcoinNetwork(), auctionId: a.id, price: linear.currentPrice, status: linear.auctionStatus, at: now })
       }),
-      { params: t.Object({ auctionId: t.String() }), query: t.Object({ network: t.Optional(t.String()) }) },
+      { 
+        params: t.Object({ auctionId: t.String() }), 
+        query: t.Object({ network: t.Optional(t.String()) }),
+        response: t.Union([
+          SuccessResponse(t.Object({
+            network: t.String(),
+            auctionId: t.String(),
+            price: t.Number(),
+            status: t.String(),
+            at: t.Number(),
+          })),
+          ErrorResponse
+        ])
+      },
     )
-    .get('/price/:auctionId/stepped', async ({ params, query }) =>
+    .get('/price/:auctionId/stepped', async ({ params, query, set }) =>
       await withNetworkOverride(query?.network as any, async () => {
         const now = Math.floor(Date.now() / 1000)
         const a = await (database as any).getAuction(params.auctionId)
-        if (!a) return { ok: false, error: 'Auction not found' }
+        if (!a) {
+          set.status = 404
+          return error('Auction not found', 'NOT_FOUND')
+        }
         if (a.status === 'active' && a.end_time <= now) {
           await (database as any).updateAuctionStatus(a.id, 'expired')
           a.status = 'expired'
         }
         const stepped = (database as any).calculatePriceWithIntervals(a, now)
-        return { ok: true, network: getBitcoinNetwork(), auctionId: a.id, price: stepped.currentPrice, status: a.status, at: now }
+        return success({ network: getBitcoinNetwork(), auctionId: a.id, price: stepped.currentPrice, status: a.status, at: now })
       }),
-      { params: t.Object({ auctionId: t.String() }), query: t.Object({ network: t.Optional(t.String()) }) },
+      { 
+        params: t.Object({ auctionId: t.String() }), 
+        query: t.Object({ network: t.Optional(t.String()) }),
+        response: t.Union([
+          SuccessResponse(t.Object({
+            network: t.String(),
+            auctionId: t.String(),
+            price: t.Number(),
+            status: t.String(),
+            at: t.Number(),
+          })),
+          ErrorResponse
+        ])
+      },
     )
     // Admin endpoints
     .post('/admin/check-expired', async ({ query }) =>
       await withNetworkOverride(query?.network as any, async () => {
         const result = await (database as any).checkAndUpdateExpiredAuctions()
-        return { ok: true, ...result, network: getBitcoinNetwork() }
+        return success({ ...result, network: getBitcoinNetwork() })
       }),
-      { query: t.Object({ network: t.Optional(t.String()) }) },
+      { 
+        query: t.Object({ network: t.Optional(t.String()) }),
+        response: SuccessResponse(UnknownRecord)
+      },
     )
-    .post('/auction/:auctionId/status', async ({ params, body, query }) =>
+    .post('/auction/:auctionId/status', async ({ params, body, query, set }) =>
       await withNetworkOverride(query?.network as any, async () => {
         const allowed = ['active', 'sold', 'expired']
         if (!allowed.includes((body as any).status)) {
-          return { ok: false, error: 'Invalid status' }
+          set.status = 400
+          return error('Invalid status', 'INVALID_STATUS')
         }
         const res = await (database as any).updateAuctionStatus(params.auctionId, (body as any).status)
-        if (!('success' in res) || !res.success) return { ok: false, error: 'Auction not found' }
-        return { ok: true, auctionId: params.auctionId, newStatus: (body as any).status }
+        if (!('success' in res) || !res.success) {
+          set.status = 404
+          return error('Auction not found', 'NOT_FOUND')
+        }
+        return success({ auctionId: params.auctionId, newStatus: (body as any).status })
       }),
-      { params: t.Object({ auctionId: t.String() }), body: t.Object({ status: t.String() }), query: t.Object({ network: t.Optional(t.String()) }) },
+      { 
+        params: t.Object({ auctionId: t.String() }), 
+        body: t.Object({ status: t.String() }), 
+        query: t.Object({ network: t.Optional(t.String()) }),
+        response: t.Union([
+          SuccessResponse(t.Object({
+            auctionId: t.String(),
+            newStatus: t.String(),
+          })),
+          ErrorResponse
+        ])
+      },
     )
     // Clearing price Dutch auction endpoints
     .post('/clearing/create-auction', async ({ body, set }) => {
@@ -365,14 +553,14 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
           duration,
           decrementInterval,
           sellerAddress,
-        } = body as any
-        if (!inscriptionIds || !Array.isArray(inscriptionIds) || inscriptionIds.length === 0) {
+        } = body
+        if (!inscriptionIds || inscriptionIds.length === 0) {
           set.status = 400
-          return { error: 'inscriptionIds[] required' }
+          return error('inscriptionIds[] required', 'VALIDATION_ERROR')
         }
         if (!quantity || !startPrice || !minPrice || !duration || !sellerAddress) {
           set.status = 400
-          return { error: 'quantity, startPrice, minPrice, duration, sellerAddress required' }
+          return error('quantity, startPrice, minPrice, duration, sellerAddress required', 'VALIDATION_ERROR')
         }
         const id = String(auctionId ?? `auc_${Date.now()}`)
         const input = {
@@ -387,10 +575,10 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
           seller_address: String(sellerAddress),
         }
         const res = (database as any).createClearingPriceAuction(input)
-        return res
+        return success(res)
       } catch (err: any) {
         set.status = 500
-        return { error: err?.message || 'internal_error' }
+        return error(err?.message || 'internal_error', 'INTERNAL_ERROR')
       }
     },
     {
@@ -403,29 +591,24 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         duration: t.Number(),
         decrementInterval: t.Optional(t.Number()),
         sellerAddress: t.String(),
-      })
+      }),
+      response: t.Union([
+        SuccessResponse(UnknownRecord),
+        ErrorResponse
+      ])
     })
     .post('/clearing/place-bid', async ({ body, set }) => {
       try {
-        const { auctionId, bidderAddress, quantity } = body as any
+        const { auctionId, bidderAddress, quantity } = body
         if (!auctionId || !bidderAddress) {
           set.status = 400
-          return { error: 'auctionId and bidderAddress required' }
+          return error('auctionId and bidderAddress required', 'VALIDATION_ERROR')
         }
         const res = (database as any).placeBid(String(auctionId), String(bidderAddress), Number(quantity ?? 1))
-        return res
+        return success(res)
       } catch (err: any) {
-        // Better error handling for validation errors
-        if (err?.message?.includes('Invalid') || err?.message?.includes('Insufficient') || err?.message?.includes('must be')) {
-          set.status = 400
-          return { error: err.message }
-        }
-        if (err?.message?.includes('not active')) {
-          set.status = 409
-          return { error: err.message }
-        }
         set.status = 500
-        return { error: err?.message || 'internal_error' }
+        return error(err?.message || 'internal_error', 'INTERNAL_ERROR')
       }
     },
     {
@@ -433,76 +616,93 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         auctionId: t.String(),
         bidderAddress: t.String(),
         quantity: t.Optional(t.Number()),
-      })
+      }),
+      response: t.Union([
+        SuccessResponse(UnknownRecord),
+        ErrorResponse
+      ])
     })
     .get('/clearing/status/:auctionId', ({ params, set }) => {
       try {
-        return (database as any).getClearingAuctionStatus(String(params.auctionId))
+        const res = (database as any).getClearingAuctionStatus(String(params.auctionId))
+        return success(res)
       } catch (err: any) {
         set.status = 404
-        return { error: err?.message || 'not_found' }
+        return error(err?.message || 'not_found', 'NOT_FOUND')
       }
+    },
+    {
+      response: t.Union([
+        SuccessResponse(UnknownRecord),
+        ErrorResponse
+      ])
     })
     .get('/clearing/bids/:auctionId', ({ params, set }) => {
       try {
-        return (database as any).getAuctionBids(String(params.auctionId))
+        const res = (database as any).getAuctionBids(String(params.auctionId))
+        return success(res)
       } catch (err: any) {
         set.status = 404
-        return { error: err?.message || 'not_found' }
+        return error(err?.message || 'not_found', 'NOT_FOUND')
       }
+    },
+    {
+      response: t.Union([
+        SuccessResponse(UnknownRecord),
+        ErrorResponse
+      ])
     })
     .get('/clearing/settlement/:auctionId', ({ params, set }) => {
       try {
-        return (database as any).calculateSettlement(String(params.auctionId))
+        const res = (database as any).calculateSettlement(String(params.auctionId))
+        return success(res)
       } catch (err: any) {
         set.status = 404
-        return { error: err?.message || 'not_found' }
+        return error(err?.message || 'not_found', 'NOT_FOUND')
       }
+    },
+    {
+      response: t.Union([
+        SuccessResponse(UnknownRecord),
+        ErrorResponse
+      ])
     })
     .post('/clearing/mark-settled', ({ body, set }) => {
       try {
-        const { auctionId, bidIds } = body as any
+        const { auctionId, bidIds } = body
         if (!auctionId || !Array.isArray(bidIds)) {
           set.status = 400
-          return { error: 'auctionId and bidIds[] required' }
+          return error('auctionId and bidIds[] required', 'VALIDATION_ERROR')
         }
-        const result = (database as any).markBidsSettled(String(auctionId), bidIds.map(String))
-        // Return partial success with errors if any bids failed
-        if (result.errors && result.errors.length > 0) {
-          set.status = 207 // Multi-Status
-        }
-        return result
+        const res = (database as any).markBidsSettled(String(auctionId), bidIds.map(String))
+        return success(res)
       } catch (err: any) {
         set.status = 500
-        return { error: err?.message || 'internal_error' }
+        return error(err?.message || 'internal_error', 'INTERNAL_ERROR')
       }
     },
     {
       body: t.Object({
         auctionId: t.String(),
         bidIds: t.Array(t.String()),
-      })
+      }),
+      response: t.Union([
+        SuccessResponse(UnknownRecord),
+        ErrorResponse
+      ])
     })
     .post('/clearing/create-bid-payment', ({ body, set }) => {
       try {
-        const { auctionId, bidderAddress, bidAmount, quantity } = body as any
+        const { auctionId, bidderAddress, bidAmount, quantity } = body
         if (!auctionId || !bidderAddress || bidAmount == null) {
           set.status = 400
-          return { error: 'auctionId, bidderAddress, bidAmount required' }
+          return error('auctionId, bidderAddress, bidAmount required', 'VALIDATION_ERROR')
         }
-        return (database as any).createBidPaymentPSBT(String(auctionId), String(bidderAddress), Number(bidAmount), Number(quantity ?? 1))
+        const res = (database as any).createBidPaymentPSBT(String(auctionId), String(bidderAddress), Number(bidAmount), Number(quantity ?? 1))
+        return success(res)
       } catch (err: any) {
-        // Better error handling for validation errors
-        if (err?.message?.includes('Invalid') || err?.message?.includes('Insufficient') || err?.message?.includes('must be')) {
-          set.status = 400
-          return { error: err.message }
-        }
-        if (err?.message?.includes('not active') || err?.message?.includes('not found')) {
-          set.status = 404
-          return { error: err.message }
-        }
         set.status = 500
-        return { error: err?.message || 'internal_error' }
+        return error(err?.message || 'internal_error', 'INTERNAL_ERROR')
       }
     },
     {
@@ -511,94 +711,110 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         bidderAddress: t.String(),
         bidAmount: t.Number(),
         quantity: t.Optional(t.Number()),
-      })
+      }),
+      response: t.Union([
+        SuccessResponse(UnknownRecord),
+        ErrorResponse
+      ])
     })
     .post('/clearing/confirm-bid-payment', ({ body, set }) => {
       try {
-        const { bidId, transactionId } = body as any
+        const { bidId, transactionId } = body
         if (!bidId || !transactionId) {
           set.status = 400
-          return { error: 'bidId and transactionId required' }
+          return error('bidId and transactionId required', 'VALIDATION_ERROR')
         }
-        return (database as any).confirmBidPayment(String(bidId), String(transactionId))
+        const res = (database as any).confirmBidPayment(String(bidId), String(transactionId))
+        return success(res)
       } catch (err: any) {
-        // Better error handling for state transition errors
-        if (err?.message?.includes('Cannot confirm') || err?.message?.includes('Valid transaction')) {
-          set.status = 400
-          return { error: err.message }
-        }
-        if (err?.message?.includes('not found')) {
-          set.status = 404
-          return { error: err.message }
-        }
         set.status = 500
-        return { error: err?.message || 'internal_error' }
+        return error(err?.message || 'internal_error', 'INTERNAL_ERROR')
       }
     },
     {
       body: t.Object({
         bidId: t.String(),
         transactionId: t.String(),
-      })
+      }),
+      response: t.Union([
+        SuccessResponse(UnknownRecord),
+        ErrorResponse
+      ])
     })
     .post('/clearing/process-settlement', ({ body, set }) => {
       try {
-        const { auctionId } = body as any
+        const { auctionId } = body
         if (!auctionId) {
           set.status = 400
-          return { error: 'auctionId required' }
+          return error('auctionId required', 'VALIDATION_ERROR')
         }
-        return (database as any).processAuctionSettlement(String(auctionId))
+        const res = (database as any).processAuctionSettlement(String(auctionId))
+        return success(res)
       } catch (err: any) {
-        // Better error handling for settlement errors
-        if (err?.message?.includes('Cannot settle') || err?.message?.includes('Payment must be confirmed')) {
-          set.status = 400
-          return { error: err.message }
-        }
-        if (err?.message?.includes('not found')) {
-          set.status = 404
-          return { error: err.message }
-        }
         set.status = 500
-        return { error: err?.message || 'internal_error' }
+        return error(err?.message || 'internal_error', 'INTERNAL_ERROR')
       }
     },
     {
       body: t.Object({
         auctionId: t.String(),
-      })
+      }),
+      response: t.Union([
+        SuccessResponse(UnknownRecord),
+        ErrorResponse
+      ])
     })
     .get('/clearing/bid-payment-status/:bidId', ({ params, set }) => {
       try {
-        return (database as any).getBidDetails(String(params.bidId))
+        const res = (database as any).getBidDetails(String(params.bidId))
+        return success(res)
       } catch (err: any) {
         set.status = 404
-        return { error: err?.message || 'not_found' }
+        return error(err?.message || 'not_found', 'NOT_FOUND')
       }
+    },
+    {
+      response: t.Union([
+        SuccessResponse(UnknownRecord),
+        ErrorResponse
+      ])
     })
     .get('/clearing/auction-payments/:auctionId', ({ params, set }) => {
       try {
-        return (database as any).getAuctionBidsWithPayments(String(params.auctionId))
+        const res = (database as any).getAuctionBidsWithPayments(String(params.auctionId))
+        return success(res)
       } catch (err: any) {
         set.status = 404
-        return { error: err?.message || 'not_found' }
+        return error(err?.message || 'not_found', 'NOT_FOUND')
       }
+    },
+    {
+      response: t.Union([
+        SuccessResponse(UnknownRecord),
+        ErrorResponse
+      ])
     })
     // Demo helper
-    .post('/demo/create-clearing-auction', ({ body }) => {
-      const id = String((body as any)?.auctionId ?? `demo_${Date.now()}`)
-      const inscriptionIds = (body as any)?.inscriptionIds ?? ['insc-0', 'insc-1', 'insc-2']
-      return (database as any).createClearingPriceAuction({
-        id,
-        inscription_id: String(inscriptionIds[0]),
-        inscription_ids: inscriptionIds.map(String),
-        quantity: Number((body as any)?.quantity ?? 3),
-        start_price: Number((body as any)?.startPrice ?? 30000),
-        min_price: Number((body as any)?.minPrice ?? 10000),
-        duration: Number((body as any)?.duration ?? 3600),
-        decrement_interval: Number((body as any)?.decrementInterval ?? 600),
-        seller_address: String((body as any)?.sellerAddress ?? 'tb1p_seller'),
-      })
+    .post('/demo/create-clearing-auction', ({ body, set }) => {
+      try {
+        const id = String(body?.auctionId ?? `demo_${Date.now()}`)
+        const inscriptionIds = body?.inscriptionIds ?? ['insc-0', 'insc-1', 'insc-2']
+        const res = (database as any).createClearingPriceAuction({
+          id,
+          inscription_id: String(inscriptionIds[0]),
+          inscription_ids: inscriptionIds.map(String),
+          quantity: Number(body?.quantity ?? 3),
+          start_price: Number(body?.startPrice ?? 30000),
+          min_price: Number(body?.minPrice ?? 10000),
+          duration: Number(body?.duration ?? 3600),
+          decrement_interval: Number(body?.decrementInterval ?? 600),
+          seller_address: String(body?.sellerAddress ?? 'tb1p_seller'),
+        })
+        return success(res)
+      } catch (err: any) {
+        set.status = 500
+        return error(err?.message || 'internal_error', 'INTERNAL_ERROR')
+      }
     },
     {
       body: t.Object({
@@ -610,16 +826,20 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         duration: t.Optional(t.Number()),
         decrementInterval: t.Optional(t.Number()),
         sellerAddress: t.Optional(t.String()),
-      })
+      }),
+      response: t.Union([
+        SuccessResponse(UnknownRecord),
+        ErrorResponse
+      ])
     })
 
     // Recovery endpoints (proxy to in-process service db)
-    .get('/recovery/auction/:auctionId', ({ params }) => svcDb.recoverAuctionFromSeed(params.auctionId))
-    .get('/recovery/all', () => svcDb.recoverAllAuctionsFromSeed())
-    .get('/recovery/verify/:auctionId', ({ params }) => svcDb.verifyAuctionRecovery(params.auctionId))
-    .post('/api/recovery/simulate-disaster', () => svcDb.simulateDisasterRecovery())
-    .get('/api/recovery/status', () => svcDb.getRecoveryStatus())
-    .get('/api/recovery/documentation', () => ({
+    .get('/recovery/auction/:auctionId', ({ params }) => success(svcDb.recoverAuctionFromSeed(params.auctionId)))
+    .get('/recovery/all', () => success(svcDb.recoverAllAuctionsFromSeed()))
+    .get('/recovery/verify/:auctionId', ({ params }) => success(svcDb.verifyAuctionRecovery(params.auctionId)))
+    .post('/api/recovery/simulate-disaster', () => success(svcDb.simulateDisasterRecovery()))
+    .get('/api/recovery/status', () => success(svcDb.getRecoveryStatus()))
+    .get('/api/recovery/documentation', () => success({
       title: 'Disaster Recovery Procedures',
       version: 1,
       procedures: [
@@ -631,43 +851,58 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
       ]
     }))
     // Seed endpoints
-    .post('/seed/validate', async ({ request }) => {
-      const body = await readJson(request)
-      return svcDb.validateSeedPhrase((body as any)?.seed)
-    })
-    .post('/seed/import', async ({ request }) => {
-      const body = await readJson(request)
-      return svcDb.importMasterSeed((body as any)?.seed)
-    })
-    .post('/seed/rotate', async ({ request }) => {
-      const body = await readJson(request)
-      return svcDb.rotateMasterSeed((body as any)?.newSeed)
-    })
-    .get('/seed/backup-with-warnings', () => svcDb.getMasterSeedWithWarnings())
-    .get('/seed/status', () => svcDb.getSeedManagementStatus())
+    .post('/seed/validate', ({ body }) => success(svcDb.validateSeedPhrase(body?.seed)),
+      {
+        body: t.Object({ seed: t.Optional(t.String()) }),
+      response: SuccessResponse(UnknownRecord)
+      }
+    )
+    .post('/seed/import', ({ body }) => success(svcDb.importMasterSeed(body?.seed)),
+      {
+        body: t.Object({ seed: t.Optional(t.String()) }),
+      response: SuccessResponse(UnknownRecord)
+      }
+    )
+    .post('/seed/rotate', ({ body }) => success(svcDb.rotateMasterSeed(body?.newSeed)),
+      {
+        body: t.Object({ newSeed: t.Optional(t.String()) }),
+      response: SuccessResponse(UnknownRecord)
+      }
+    )
+    .get('/seed/backup-with-warnings', () => success(svcDb.getMasterSeedWithWarnings()))
+    .get('/seed/status', () => success(svcDb.getSeedManagementStatus()))
     // Security minimal (not used by tests but harmless)
-    .get('/security/audit-logs', ({ query }) => svcDb.getAuditLogs(query?.limit ? Number(query.limit) : undefined, query?.operation as string | undefined))
-    .post('/security/test-encryption', async ({ request }) => {
-      const body = await readJson(request)
-      return svcDb.testEncryptionRoundTrip((body as any)?.plaintext)
-    })
+    .get('/security/audit-logs', ({ query }) => success(svcDb.getAuditLogs(query?.limit ? Number(query.limit) : undefined, query?.operation as string | undefined)))
+    .post('/security/test-encryption', ({ body }) => success(svcDb.testEncryptionRoundTrip(body?.plaintext)),
+      {
+        body: t.Object({ plaintext: t.Optional(t.String()) }),
+      response: SuccessResponse(UnknownRecord)
+      }
+    )
     // Fee endpoints
     .get('/fees/rates', ({ query }) =>
       withNetworkOverride(query?.network as any, async () => {
         const network = (query?.network as string) || getBitcoinNetwork()
         const rates = await database.getFeeRates(network)
-        return { network: getBitcoinNetwork(), rates }
+        return success({ network: getBitcoinNetwork(), rates })
       }),
     )
-    .post('/fees/calculate', async ({ request }) => {
-      const body = await readJson(request)
-      const network = (body as any)?.network || getBitcoinNetwork()
-      const category = ((body as any)?.category || 'medium') as 'low' | 'medium' | 'high'
-      const size = Number((body as any)?.size ?? 0)
+    .post('/fees/calculate', async ({ body }) => {
+      const network = body?.network || getBitcoinNetwork()
+      const category = (body?.category || 'medium') as 'low' | 'medium' | 'high'
+      const size = Number(body?.size ?? 0)
       const rates = await database.getFeeRates(network)
       const satsPerVb = category === 'high' ? rates.fast : category === 'low' ? rates.slow : rates.normal
       const fee = Math.ceil(size * satsPerVb)
-      return { network, category, rate: satsPerVb, size, fee, currency: 'sats' }
+      return success({ network, category, rate: satsPerVb, size, fee, currency: 'sats' })
+    },
+    {
+      body: t.Object({
+        network: t.Optional(t.String()),
+        category: t.Optional(t.String()),
+        size: t.Optional(t.Number()),
+      }),
+      response: SuccessResponse(UnknownRecord)
     })
     .get('/fees/estimation/:transactionType', ({ params, query }) =>
       withNetworkOverride(query?.network as any, async () => {
@@ -679,71 +914,57 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
           { category: 'medium', rate: rates.normal, estimatedFeeForSize: Math.ceil(sampleSize * rates.normal), etaMinutes: 10 },
           { category: 'high', rate: rates.fast, estimatedFeeForSize: Math.ceil(sampleSize * rates.fast), etaMinutes: 2 },
         ]
-        return { transactionType: params.transactionType, network: getBitcoinNetwork(), options }
+        return success({ transactionType: params.transactionType, network: getBitcoinNetwork(), options })
       }),
     )
-    .post('/fees/escalate', async ({ request }) => {
-      const body = await readJson(request)
-      const currentRate = Number((body as any)?.currentRate ?? 1)
-      const bumpPercent = Number((body as any)?.bumpPercent ?? 20)
+    .post('/fees/escalate', ({ body }) => {
+      const currentRate = Number(body?.currentRate ?? 1)
+      const bumpPercent = Number(body?.bumpPercent ?? 20)
       const newRate = Math.ceil(currentRate * (1 + bumpPercent / 100))
-      return { oldRate: currentRate, newRate, bumpedByPercent: bumpPercent }
+      return success({ oldRate: currentRate, newRate, bumpedByPercent: bumpPercent })
+    },
+    {
+      body: t.Object({
+        currentRate: t.Optional(t.Number()),
+        bumpPercent: t.Optional(t.Number()),
+      }),
+      response: SuccessResponse(UnknownRecord)
     })
-    .post('/fees/test-calculations', () => ({ ok: true }))
-    .get('/auction/:auctionId/fee-info', ({ params, query }) => svcDb.getAuctionFeeInfo(params.auctionId, (query?.network as string) || undefined))
+    .post('/fees/test-calculations', () => success({ ok: true }))
+    .get('/auction/:auctionId/fee-info', ({ params, query }) => success(svcDb.getAuctionFeeInfo(params.auctionId, (query?.network as string) || getBitcoinNetwork())))
     // Monitoring endpoints
-    .get('/transaction/:transactionId/status', ({ params, query }) => svcDb.monitorTransaction(params.transactionId, (query?.auctionId as string) || undefined))
-    .get('/transaction/:transactionId/monitor', ({ params, query }) => svcDb.monitorTransactionReal(params.transactionId, (query?.auctionId as string) || undefined, (query?.network as string) || undefined))
-    .post('/auction/:auctionId/update-from-blockchain', ({ params }) => svcDb.updateAuctionFromBlockchain(params.auctionId), { params: t.Object({ auctionId: t.String() }) })
-    .post('/admin/update-all-from-blockchain', () => svcDb.updateAllAuctionsFromBlockchain())
-    .get('/admin/detect-failed-transactions', () => svcDb.detectFailedTransactions())
-    .get('/auction/:auctionId/transaction-history', ({ params }) => svcDb.getTransactionHistory(params.auctionId))
-    .post('/transaction/handle-failure', async ({ request }) => {
-      const body = await readJson(request)
-      return svcDb.handleTransactionFailure((body as any)?.transactionId, (body as any)?.reason)
-    })
-    // Error handler with structured logging
-    .onError(({ code, error, set, request }) => {
-      const message = (error as Error)?.message || 'Internal Error'
-      const method = request.method
-      const path = new URL(request.url).pathname
-      
+    .get('/transaction/:transactionId/status', ({ params, query }) => success(svcDb.monitorTransaction(params.transactionId, (query?.auctionId as string) || undefined)))
+    .get('/transaction/:transactionId/monitor', ({ params, query }) => success(svcDb.monitorTransactionReal(params.transactionId, (query?.auctionId as string) || undefined, (query?.network as string) || undefined)))
+    .post('/auction/:auctionId/update-from-blockchain', ({ params }) => success(svcDb.updateAuctionFromBlockchain(params.auctionId)), { params: t.Object({ auctionId: t.String() }) })
+    .post('/admin/update-all-from-blockchain', () => success(svcDb.updateAllAuctionsFromBlockchain()))
+    .get('/admin/detect-failed-transactions', () => success(svcDb.detectFailedTransactions()))
+    .get('/auction/:auctionId/transaction-history', ({ params }) => success(svcDb.getTransactionHistory(params.auctionId)))
+    .post('/transaction/handle-failure', ({ body }) => success(svcDb.handleTransactionFailure(String(body?.transactionId ?? ''), String(body?.reason ?? ''))),
+      {
+        body: t.Object({
+          transactionId: t.Optional(t.String()),
+          reason: t.Optional(t.String()),
+        }),
+      response: SuccessResponse(UnknownRecord)
+      }
+    )
+    // Error handler
+    .onError(({ code, error: err, set }) => {
+      const message = (err as Error)?.message || 'Internal Error'
       if (code === 'VALIDATION') {
         set.status = 400
-        logger.warn('Validation error', { 
-          method, 
-          path, 
-          code, 
-          error: message,
-          type: 'validation',
-        })
-        return { error: message }
+        return { ok: false, error: message, code: 'VALIDATION_ERROR' }
       }
       if (/not\s*found/i.test(message)) {
         set.status = 404
-        logger.info('Resource not found', { method, path, error: message })
-        return { error: 'Not Found' }
+        return { ok: false, error: 'Not Found', code: 'NOT_FOUND' }
       }
-      if ((error as any)?.name === 'ValidationError' || (error as any)?.type === 'validation' || (error as any)?.status === 400 || /required|expected|invalid|must/i.test(message)) {
+      if ((err as any)?.name === 'ValidationError' || (err as any)?.type === 'validation' || (err as any)?.status === 400 || /required|expected|invalid|must/i.test(message)) {
         set.status = 400
-        logger.warn('Bad request', { 
-          method, 
-          path, 
-          error: message,
-          errorName: (error as any)?.name,
-          type: 'validation',
-        })
-        return { error: message }
+        return { ok: false, error: message, code: 'VALIDATION_ERROR' }
       }
       set.status = 500
-      logger.error('Internal server error', { 
-        method, 
-        path, 
-        error: message,
-        stack: (error as Error)?.stack?.split('\n').slice(0, 3).join('\n'), // First 3 lines of stack
-        errorName: (error as any)?.name,
-      })
-      return { error: message }
+      return { ok: false, error: message, code: 'INTERNAL_ERROR' }
     })
 
     // Additional endpoints from feature branch (auction creation and escrow)
@@ -756,62 +977,48 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
           duration,
           decrementInterval,
           sellerAddress,
-        } = body as any
+        } = body
 
         if (!asset || !startPrice || !minPrice || !duration || !decrementInterval || !sellerAddress) {
-          return new Response(JSON.stringify({ error: 'Missing required fields' }), {
-            status: 400,
-            headers: { 'content-type': 'application/json' },
-          })
+          set.status = 400
+          return error('Missing required fields', 'VALIDATION_ERROR')
         }
 
         const inscriptionRegex = /^[0-9a-fA-F]{64}i\d+$/
         if (!inscriptionRegex.test(String(asset))) {
-          return new Response(JSON.stringify({ error: 'Invalid inscriptionId format. Expected <txid>i<index>' }), {
-            status: 400,
-            headers: { 'content-type': 'application/json' },
-          })
+          set.status = 400
+          return error('Invalid inscriptionId format. Expected <txid>i<index>', 'VALIDATION_ERROR')
         }
 
         const [txid, voutStr] = String(asset).split('i')
         if (!voutStr) {
-          return new Response(JSON.stringify({ error: 'Invalid inscription format. Expected <txid>i<index>' }), {
-            status: 400,
-            headers: { 'content-type': 'application/json' },
-          })
+          set.status = 400
+          return error('Invalid inscription format. Expected <txid>i<index>', 'VALIDATION_ERROR')
         }
         const voutIndex = parseInt(voutStr, 10)
         if (!Number.isFinite(voutIndex)) {
-          return new Response(JSON.stringify({ error: 'Invalid inscription vout index' }), {
-            status: 400,
-            headers: { 'content-type': 'application/json' },
-          })
+          set.status = 400
+          return error('Invalid inscription vout index', 'VALIDATION_ERROR')
         }
 
         const base = getMempoolApiBase()
 
         const txResp = await fetch(`${base}/tx/${txid}`)
         if (!txResp.ok) {
-          return new Response(JSON.stringify({ error: 'Transaction not found' }), {
-            status: 400,
-            headers: { 'content-type': 'application/json' },
-          })
+          set.status = 400
+          return error('Transaction not found', 'NOT_FOUND')
         }
         const txJson = await txResp.json() as any
         const vout = (txJson?.vout || [])[voutIndex]
         if (!vout) {
-          return new Response(JSON.stringify({ error: 'Inscription output not found' }), {
-            status: 400,
-            headers: { 'content-type': 'application/json' },
-          })
+          set.status = 400
+          return error('Inscription output not found', 'NOT_FOUND')
         }
 
         const outspendsResp = await fetch(`${base}/tx/${txid}/outspends`)
         if (!outspendsResp.ok) {
-          return new Response(JSON.stringify({ error: 'Failed to verify outspend status' }), {
-            status: 500,
-            headers: { 'content-type': 'application/json' },
-          })
+          set.status = 500
+          return error('Failed to verify outspend status', 'INTERNAL_ERROR')
         }
         const outspends = await outspendsResp.json() as any
         const outspend = outspends?.[voutIndex]
@@ -831,16 +1038,12 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         })
         
         if (!ownerMatches) {
-          return new Response(JSON.stringify({ error: 'Ownership mismatch for inscription UTXO' }), {
-            status: 403,
-            headers: { 'content-type': 'application/json' },
-          })
+          set.status = 403
+          return error('Ownership mismatch for inscription UTXO', 'FORBIDDEN')
         }
         if (spent) {
-          return new Response(JSON.stringify({ error: 'Inscription UTXO already spent' }), {
-            status: 403,
-            headers: { 'content-type': 'application/json' },
-          })
+          set.status = 403
+          return error('Inscription UTXO already spent', 'FORBIDDEN')
         }
 
         // Deterministic auction id from asset and seller to make testing easier
@@ -887,28 +1090,22 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         }
         database.storeAuction(auction as any, `enc_${keyPair.privateKeyHex}`)
 
-        return {
+        return success({
           id: auctionId,
           address,
           psbt: psbt.toBase64(),
           inscriptionInfo: {
-            txid,
+            txid: String(txid),
             vout: voutIndex,
-            address: vout.scriptpubkey_address,
+            address: vout.scriptpubkey_address as string | undefined,
             value,
             spent,
           },
-        }
+        })
       } catch (err: any) {
-        logger.error('Auction creation failed', {
-          operation: 'create-auction',
-          error: err?.message || 'Unknown error',
-          stack: err?.stack?.split('\n').slice(0, 3).join('\n'),
-        })
-        return new Response(JSON.stringify({ error: 'Internal server error' }), {
-          status: 500,
-          headers: { 'content-type': 'application/json' },
-        })
+        console.error('create-auction error', err)
+        set.status = 500
+        return error('Internal server error', 'INTERNAL_ERROR')
       }
     }, {
       body: t.Object({
@@ -918,30 +1115,54 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         duration: t.Number(),
         decrementInterval: t.Number(),
         sellerAddress: t.String(),
-      })
+      }),
+      response: t.Union([
+        SuccessResponse(t.Object({
+          id: t.String(),
+          address: t.String(),
+          psbt: t.String(),
+          inscriptionInfo: t.Object({
+            txid: t.String(),
+            vout: t.Number(),
+            address: t.Optional(t.String()),
+            value: t.Number(),
+            spent: t.Boolean(),
+          })
+        })),
+        ErrorResponse
+      ])
     })
-    .post('/escrow/verify-ownership', ({ body, set }) => {
-      const { inscriptionId, ownerAddress } = body as any
-      return database.verifyInscriptionOwnership({ inscriptionId, ownerAddress })
-    }, { body: t.Object({ inscriptionId: t.String(), ownerAddress: t.String() }) })
-    .post('/escrow/create-psbt', ({ body, set }) => {
-      const { auctionId, inscriptionId, ownerAddress } = body as any
-      return database.createInscriptionEscrowPSBT({ auctionId, inscriptionId, ownerAddress })
-    }, { body: t.Object({ auctionId: t.String(), inscriptionId: t.String(), ownerAddress: t.String() }) })
+    .post('/escrow/verify-ownership', ({ body }) => {
+      const { inscriptionId, ownerAddress } = body
+      return success(database.verifyInscriptionOwnership({ inscriptionId, ownerAddress }))
+    }, { 
+      body: t.Object({ inscriptionId: t.String(), ownerAddress: t.String() }),
+      response: SuccessResponse(UnknownRecord)
+    })
+    .post('/escrow/create-psbt', ({ body }) => {
+      const { auctionId, inscriptionId, ownerAddress } = body
+      return success(database.createInscriptionEscrowPSBT({ auctionId, inscriptionId, ownerAddress }))
+    }, { 
+      body: t.Object({ auctionId: t.String(), inscriptionId: t.String(), ownerAddress: t.String() }),
+      response: SuccessResponse(UnknownRecord)
+    })
     .get('/escrow/monitor/:auctionId/:inscriptionId', ({ params }) => {
-      const { auctionId, inscriptionId } = params as any
-      return database.monitorInscriptionEscrow(String(auctionId), String(inscriptionId))
+      const { auctionId, inscriptionId } = params
+      return success(database.monitorInscriptionEscrow(String(auctionId), String(inscriptionId)))
     })
-    .post('/escrow/update-status', ({ body, set }) => {
-      const { auctionId, status, details } = body as any
-      return database.updateInscriptionStatus({ auctionId, status, details })
-    }, { body: t.Object({ auctionId: t.String(), status: t.String(), details: t.Optional(t.Any()) }) })
+    .post('/escrow/update-status', ({ body }) => {
+      const { auctionId, status, details } = body
+      return success(database.updateInscriptionStatus({ auctionId, status, details }))
+    }, { 
+      body: t.Object({ auctionId: t.String(), status: t.String(), details: t.Optional(UnknownRecord) }),
+      response: SuccessResponse(t.Object({ ok: t.Boolean(), status: t.String() }))
+    })
     .get('/escrow/status/:auctionId', ({ params }) => {
-      const { auctionId } = params as any
-      return database.getInscriptionEscrowStatus(String(auctionId))
+      const { auctionId } = params
+      return success(database.getInscriptionEscrowStatus(String(auctionId)))
     })
     .post('/admin/check-escrow-timeouts', () => {
-      return database.checkEscrowTimeouts()
+      return success(database.checkEscrowTimeouts())
     })
 
     // Forward all /api/* requests to existing handlers without the /api prefix
@@ -952,11 +1173,11 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
       const stripped = url.pathname.replace(/^\/api\/?/, '/')
       forwarded.pathname = stripped === '//' ? '/' : stripped
       const method = request.method.toUpperCase()
-      let body: BodyInit | undefined
+      let body: BodyInit | null | undefined
       if (method !== 'GET' && method !== 'HEAD') {
         try {
           const buf = await request.arrayBuffer()
-          body = buf
+          body = buf as BodyInit
         } catch {}
       }
       const forwardedReq = new Request(forwarded.toString(), {
