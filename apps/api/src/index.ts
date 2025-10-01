@@ -1287,6 +1287,159 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
     .post('/api/admin/check-escrow-timeouts', () => {
       return success(database.checkEscrowTimeouts())
     })
+    // Extract transaction hex from signed PSBT
+    .post('/api/psbt/extract-transaction', async ({ body, set }) => {
+      try {
+        const { psbt } = body
+        
+        if (!psbt || typeof psbt !== 'string') {
+          set.status = 400
+          return error('PSBT string required', 'VALIDATION_ERROR')
+        }
+        
+        // Try to parse PSBT (could be base64 or hex)
+        let psbtObj: bitcoin.Psbt
+        try {
+          // Try base64 first (most common format from wallets)
+          psbtObj = bitcoin.Psbt.fromBase64(psbt, { network: getBitcoinJsNetwork() })
+        } catch {
+          try {
+            // Try hex format
+            psbtObj = bitcoin.Psbt.fromHex(psbt, { network: getBitcoinJsNetwork() })
+          } catch (parseError: any) {
+            set.status = 400
+            return error('Invalid PSBT format. Must be base64 or hex.', 'INVALID_PSBT')
+          }
+        }
+        
+        // Finalize all inputs if not already finalized
+        try {
+          psbtObj.finalizeAllInputs()
+        } catch (finalizeError) {
+          // May already be finalized, or may need partial finalization
+          // Try to extract anyway
+        }
+        
+        // Extract the raw transaction
+        let tx: bitcoin.Transaction
+        try {
+          tx = psbtObj.extractTransaction()
+        } catch (extractError: any) {
+          set.status = 400
+          return error(
+            'Failed to extract transaction from PSBT. Ensure PSBT is fully signed.',
+            'EXTRACTION_FAILED'
+          )
+        }
+        
+        // Convert to hex
+        const transactionHex = tx.toHex()
+        
+        logger.info('Extracted transaction from PSBT', {
+          operation: 'extract-transaction',
+          txid: tx.getId(),
+          size: transactionHex.length / 2,
+        })
+        
+        return success({
+          transactionHex,
+          txid: tx.getId(),
+        })
+      } catch (err: any) {
+        logger.error('Failed to extract transaction from PSBT', {
+          operation: 'extract-transaction',
+          error: err.message,
+        })
+        set.status = 500
+        return error(err?.message || 'internal_error', 'INTERNAL_ERROR')
+      }
+    }, {
+      body: t.Object({
+        psbt: t.String(),
+      }),
+      response: t.Union([
+        SuccessResponse(t.Object({
+          transactionHex: t.String(),
+          txid: t.String(),
+        })),
+        ErrorResponse
+      ])
+    })
+    // Confirm inscription escrow after transaction broadcast
+    .post('/api/auction/:auctionId/confirm-escrow', async ({ params, body, set }) => {
+      try {
+        const { auctionId } = params
+        const { transactionId, signedPsbt } = body
+        
+        if (!transactionId || !signedPsbt) {
+          set.status = 400
+          return error('transactionId and signedPsbt required', 'VALIDATION_ERROR')
+        }
+        
+        // Get the auction
+        const auction = await (database as any).getAuction(auctionId)
+        if (!auction) {
+          set.status = 404
+          return error('Auction not found', 'NOT_FOUND')
+        }
+        
+        // Store transaction ID - update the auction record directly
+        // The transaction_id field is already in the schema
+        const now = Math.floor(Date.now() / 1000)
+        const db = (database as any).db
+        db.query(`
+          UPDATE single_auctions 
+          SET transaction_id = ?, updated_at = ? 
+          WHERE id = ?
+        `).run(transactionId, now, auctionId)
+        
+        // Update inscription escrow status
+        const escrowUpdate = database.updateInscriptionStatus({
+          auctionId,
+          status: 'escrowed',
+          details: {
+            transactionId,
+            timestamp: Math.floor(Date.now() / 1000),
+          },
+        })
+        
+        logger.info('Auction escrow confirmed', {
+          operation: 'confirm-escrow',
+          auctionId,
+          transactionId,
+        })
+        
+        return success({
+          auctionId,
+          transactionId,
+          status: 'escrowed',
+          escrowUpdate,
+        })
+      } catch (err: any) {
+        logger.error('Failed to confirm escrow', {
+          operation: 'confirm-escrow',
+          error: err.message,
+          auctionId: params.auctionId,
+        })
+        set.status = 500
+        return error(err?.message || 'internal_error', 'INTERNAL_ERROR')
+      }
+    }, {
+      params: t.Object({ auctionId: t.String() }),
+      body: t.Object({
+        transactionId: t.String(),
+        signedPsbt: t.String(),
+      }),
+      response: t.Union([
+        SuccessResponse(t.Object({
+          auctionId: t.String(),
+          transactionId: t.String(),
+          status: t.String(),
+          escrowUpdate: UnknownRecord,
+        })),
+        ErrorResponse
+      ])
+    })
 
 
     // Serve static assets from Astro's dist for css/js/html requests
