@@ -693,6 +693,28 @@ export class PostgresDutchyDatabase {
   getBidDetails(bidId: string): any { const bid = this.bids.get(bidId); if (!bid) throw new Error('Bid not found'); return bid }
   getAuctionBidsWithPayments(auctionId: string): { bids: any[] } { const ids = this.bidsByAuction.get(auctionId) || []; const bids = ids.map((id) => this.bids.get(id)).filter(Boolean) as any[]; return { bids } }
 
+  // Get all bids with payment_pending status for monitoring
+  getPendingPayments(): Array<{
+    id: string;
+    auctionId: string;
+    bidderAddress: string;
+    bidAmount: number;
+    quantity: number;
+    status: 'payment_pending';
+    escrowAddress?: string;
+    transactionId?: string;
+    created_at: number;
+    updated_at: number;
+  }> {
+    const pending: any[] = [];
+    for (const bid of this.bids.values()) {
+      if (bid.status === 'payment_pending') {
+        pending.push(bid);
+      }
+    }
+    return pending;
+  }
+
   // Fees
   async getFeeRates(network: BitcoinNetwork | string): Promise<{ fast: number; normal: number; slow: number }> {
     if (this.mempoolClient) return this.mempoolClient.getFeeRates(network)
