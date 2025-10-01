@@ -6,7 +6,7 @@ export default function ToastContainer() {
   const { toasts, hideToast } = useToast()
 
   return (
-    <div className="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-sm">
+    <div className="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-sm pointer-events-none">
       {toasts.map((toast) => (
         <ToastItem key={toast.id} toast={toast} onClose={() => hideToast(toast.id)} />
       ))}
@@ -94,7 +94,7 @@ function ToastItem({ toast, onClose }: ToastItemProps) {
 
   return (
     <div
-      className={`rounded-lg border p-4 shadow-lg animate-in fade-in slide-in-from-top-2 duration-300 ${style.container}`}
+      className={`pointer-events-auto rounded-lg border p-4 shadow-lg animate-in fade-in slide-in-from-top-2 duration-300 ${style.container}`}
     >
       <div className="flex items-start gap-3">
         <div className={`flex-shrink-0 ${style.icon}`}>{icons[toast.type]}</div>
