@@ -11,17 +11,23 @@ const { includeToast = true } = Astro.props
 ---
 
 {includeToast && <ToastContainer client:load />}
-<header class="border-b bg-white/80 backdrop-blur dark:border-gray-900 dark:bg-gray-900/80">
-  <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-    <a href="/" class="flex items-center gap-2 text-lg font-semibold">
-      <span class="inline-block h-6 w-6 rounded bg-black dark:bg-white"></span>
-      <span>Originals</span>
+<header class="sticky top-0 z-40 border-b border-white/40 bg-white/70 backdrop-blur-xl transition-all supports-[backdrop-filter]:bg-white/60 dark:border-white/10 dark:bg-slate-950/70">
+  <div class="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-4">
+    <a href="/" class="group flex items-center gap-3 text-base font-semibold text-foreground">
+      <span class="relative inline-flex h-11 w-11 items-center justify-center overflow-hidden rounded-2xl border border-border/60 bg-gradient-to-br from-primary/80 via-primary to-sky-400 text-white shadow-lg shadow-primary/35 transition-transform duration-300 group-hover:-translate-y-1">
+        <span class="absolute inset-0 bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.45),transparent_60%)]" />
+        <span class="text-lg">O</span>
+      </span>
+      <span class="text-lg font-semibold tracking-tight">Originals</span>
     </a>
-    <nav class="flex items-center gap-3 text-sm">
-      <a href="/auctions" class="text-gray-700 hover:text-black dark:text-gray-300 dark:hover:text-white">Auctions</a>
-      <a href="/docs/auction-type" class="text-gray-700 hover:text-black dark:text-gray-300 dark:hover:text-white">Docs</a>
-      <a href="https://github.com" class="text-gray-700 hover:text-black dark:text-gray-300 dark:hover:text-white" rel="noreferrer" target="_blank">GitHub</a>
-      <WalletButton client:load />
+    <nav class="hidden items-center gap-1 text-sm font-medium md:flex">
+      <a href="/auctions" class="rounded-full px-4 py-2 text-foreground/80 transition hover:bg-secondary hover:text-foreground">Auctions</a>
+      <a href="/docs/auction-type" class="rounded-full px-4 py-2 text-foreground/80 transition hover:bg-secondary hover:text-foreground">Docs</a>
+      <a href="https://github.com" class="rounded-full px-4 py-2 text-foreground/80 transition hover:bg-secondary hover:text-foreground" rel="noreferrer" target="_blank">GitHub</a>
     </nav>
+    <div class="flex items-center gap-2">
+      <a href="/auctions/new" class="hidden md:inline-flex btn btn-secondary h-11">Launch studio</a>
+      <WalletButton class="btn btn-primary h-11 px-5" client:load />
+    </div>
   </div>
 </header>
