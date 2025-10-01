@@ -5,11 +5,14 @@
   "scripts": {
     "dev": "astro dev --port 4321 --host",
     "build": "astro build",
-    "start": "astro preview --host 0.0.0.0 --port 4321"
+    "start": "astro preview --host 0.0.0.0 --port 4321",
+    "test": "bun test",
+    "test:stores": "bun test src/lib/stores/"
   },
   "dependencies": {
     "@astrojs/react": "^4.4.0",
     "@hookform/resolvers": "^3.9.0",
+    "@nanostores/react": "^1.0.0",
     "@originals/dutch": "file:../../packages/dutch",
     "@radix-ui/react-label": "^2.1.7",
     "@radix-ui/react-select": "^2.2.6",
@@ -17,6 +20,7 @@
     "@radix-ui/react-visually-hidden": "^1.2.3",
     "astro": "^4.15.3",
     "luxon": "^3.7.2",
+    "nanostores": "^1.0.1",
     "sats-connect": "^2.6.0"
   },
   "devDependencies": {
