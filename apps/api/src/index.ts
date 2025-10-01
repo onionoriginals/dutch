@@ -1141,6 +1141,84 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
     .post('/api/admin/check-escrow-timeouts', () => {
       return success(database.checkEscrowTimeouts())
     })
+    // Extract transaction hex from signed PSBT
+    .post('/api/psbt/extract-transaction', async ({ body, set }) => {
+      try {
+        const { psbt } = body
+        
+        if (!psbt || typeof psbt !== 'string') {
+          set.status = 400
+          return error('PSBT string required', 'VALIDATION_ERROR')
+        }
+        
+        // Try to parse PSBT (could be base64 or hex)
+        let psbtObj: bitcoin.Psbt
+        try {
+          // Try base64 first (most common format from wallets)
+          psbtObj = bitcoin.Psbt.fromBase64(psbt, { network: getBitcoinJsNetwork() })
+        } catch {
+          try {
+            // Try hex format
+            psbtObj = bitcoin.Psbt.fromHex(psbt, { network: getBitcoinJsNetwork() })
+          } catch (parseError: any) {
+            set.status = 400
+            return error('Invalid PSBT format. Must be base64 or hex.', 'INVALID_PSBT')
+          }
+        }
+        
+        // Finalize all inputs if not already finalized
+        try {
+          psbtObj.finalizeAllInputs()
+        } catch (finalizeError) {
+          // May already be finalized, or may need partial finalization
+          // Try to extract anyway
+        }
+        
+        // Extract the raw transaction
+        let tx: bitcoin.Transaction
+        try {
+          tx = psbtObj.extractTransaction()
+        } catch (extractError: any) {
+          set.status = 400
+          return error(
+            'Failed to extract transaction from PSBT. Ensure PSBT is fully signed.',
+            'EXTRACTION_FAILED'
+          )
+        }
+        
+        // Convert to hex
+        const transactionHex = tx.toHex()
+        
+        logger.info('Extracted transaction from PSBT', {
+          operation: 'extract-transaction',
+          txid: tx.getId(),
+          size: transactionHex.length / 2,
+        })
+        
+        return success({
+          transactionHex,
+          txid: tx.getId(),
+        })
+      } catch (err: any) {
+        logger.error('Failed to extract transaction from PSBT', {
+          operation: 'extract-transaction',
+          error: err.message,
+        })
+        set.status = 500
+        return error(err?.message || 'internal_error', 'INTERNAL_ERROR')
+      }
+    }, {
+      body: t.Object({
+        psbt: t.String(),
+      }),
+      response: t.Union([
+        SuccessResponse(t.Object({
+          transactionHex: t.String(),
+          txid: t.String(),
+        })),
+        ErrorResponse
+      ])
+    })
     // Confirm inscription escrow after transaction broadcast
     .post('/api/auction/:auctionId/confirm-escrow', async ({ params, body, set }) => {
       try {

@@ -313,21 +313,88 @@ export function getMempoolLink(
 }
 
 /**
- * Extracts PSBT to raw transaction hex for broadcasting
- * This is a helper to convert signed PSBT to hex format
+ * Attempts to detect if a string is a PSBT (base64) or raw transaction hex
  * 
- * Note: This function expects the PSBT to be fully signed and finalized.
- * The actual PSBT -> hex conversion should happen in the wallet or using bitcoinjs-lib.
- * This is a placeholder for the workflow.
+ * @param data - String that could be PSBT base64 or transaction hex
+ * @returns Object indicating the type and whether it needs conversion
  */
-export function extractTransactionFromPsbt(signedPsbtBase64: string): string {
-  // In practice, you would use bitcoinjs-lib to extract the transaction:
-  // const psbt = bitcoin.Psbt.fromBase64(signedPsbtBase64)
-  // psbt.finalizeAllInputs()
-  // const tx = psbt.extractTransaction()
-  // return tx.toHex()
+export function detectTransactionFormat(data: string): {
+  isPsbt: boolean
+  isHex: boolean
+  needsConversion: boolean
+} {
+  // Remove whitespace
+  const clean = data.trim()
   
-  // For browser-side, the wallet typically returns the hex directly
-  // or you need to include bitcoinjs-lib in your frontend bundle
-  throw new Error('extractTransactionFromPsbt not implemented - should be done by wallet or with bitcoinjs-lib')
+  // PSBTs in base64 typically start with "cHNi" (base64 for "psbt")
+  const isPsbtBase64 = clean.startsWith('cHNi') || clean.startsWith('cHNC')
+  
+  // Check if it's valid hex (even length, only hex chars)
+  const isHex = /^[0-9a-fA-F]+$/.test(clean) && clean.length % 2 === 0
+  
+  // PSBT magic bytes in hex: 70736274 ("psbt" in ASCII)
+  const isPsbtHex = isHex && clean.toLowerCase().startsWith('70736274')
+  
+  const isPsbt = isPsbtBase64 || isPsbtHex
+  
+  return {
+    isPsbt,
+    isHex: isHex && !isPsbtHex,
+    needsConversion: isPsbt,
+  }
+}
+
+/**
+ * Converts signed PSBT to raw transaction hex for broadcasting
+ * 
+ * Note: This is a client-side fallback. Most wallets should return the raw hex directly,
+ * but some return the signed PSBT. This function handles both cases.
+ * 
+ * Since we can't include bitcoinjs-lib in the browser bundle easily, we'll make an
+ * API call to extract the transaction hex from the PSBT.
+ * 
+ * @param signedPsbt - Signed PSBT in base64 or hex format
+ * @returns Raw transaction hex ready for broadcasting
+ */
+export async function extractTransactionFromPsbt(signedPsbt: string): Promise<string> {
+  // First, check if it's already raw transaction hex
+  const format = detectTransactionFormat(signedPsbt)
+  
+  if (!format.needsConversion && format.isHex) {
+    // Already raw transaction hex, return as-is
+    return signedPsbt
+  }
+  
+  if (!format.isPsbt) {
+    throw new Error('Invalid format: not a PSBT or transaction hex')
+  }
+  
+  // It's a PSBT, we need to extract the transaction
+  // Make an API call to extract it server-side where we have bitcoinjs-lib
+  try {
+    const response = await fetch('/api/psbt/extract-transaction', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        psbt: signedPsbt,
+      }),
+    })
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.error || 'Failed to extract transaction from PSBT')
+    }
+    
+    const data = await response.json()
+    
+    if (!data.ok || !data.data?.transactionHex) {
+      throw new Error('Invalid response from PSBT extraction API')
+    }
+    
+    return data.data.transactionHex
+  } catch (error: any) {
+    throw new Error(`Failed to extract transaction from PSBT: ${error.message}`)
+  }
 }

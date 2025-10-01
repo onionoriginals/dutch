@@ -8,7 +8,7 @@ import { DutchAuctionSchema, dutchAuctionStepFields } from '../../lib/validation
 import { normalizeDutch } from '../../utils/normalizeAuction'
 import { btcToSats, formatSats, btcToUsd, formatCurrency, getBtcUsdRate } from '../../utils/currency'
 import { signPsbt, connectWallet } from '../../lib/bitcoin/psbtSigner'
-import { broadcastTransaction, pollForConfirmations, getMempoolLink, type TransactionStatus } from '../../lib/bitcoin/broadcastTransaction'
+import { broadcastTransaction, pollForConfirmations, getMempoolLink, extractTransactionFromPsbt, type TransactionStatus } from '../../lib/bitcoin/broadcastTransaction'
 
 type DraftShape = {
   values: any
@@ -186,12 +186,17 @@ export default function CreateAuctionWizard() {
       
       console.log('PSBT signed successfully')
       
-      // Step 4: Broadcast transaction
+      // Step 4: Extract transaction hex from signed PSBT
       setPsbtSigningState(prev => ({ ...prev, stage: 'broadcasting' }))
       
-      // The signed PSBT from wallet is already in hex format for most wallets
-      // If it's base64, we'd need to convert it using bitcoinjs-lib
-      const broadcastResult = await broadcastTransaction(signResult.signedPsbt, 'testnet')
+      // Extract raw transaction hex from signed PSBT
+      // This handles both cases: wallet returning PSBT or raw hex
+      const transactionHex = await extractTransactionFromPsbt(signResult.signedPsbt)
+      
+      console.log('Transaction extracted from PSBT')
+      
+      // Step 5: Broadcast transaction to Bitcoin network
+      const broadcastResult = await broadcastTransaction(transactionHex, 'testnet')
       
       if (!broadcastResult.success || !broadcastResult.txid) {
         throw new Error(broadcastResult.error || 'Failed to broadcast transaction')
@@ -200,7 +205,7 @@ export default function CreateAuctionWizard() {
       const txid = broadcastResult.txid
       console.log('Transaction broadcast:', txid)
       
-      // Step 5: Confirm escrow with API
+      // Step 6: Confirm escrow with API
       await fetch(`/api/auction/${psbtSigningState.auctionId}/confirm-escrow`, {
         method: 'POST',
         headers: {
@@ -212,7 +217,7 @@ export default function CreateAuctionWizard() {
         }),
       })
       
-      // Step 6: Poll for confirmations
+      // Step 7: Poll for confirmations
       setPsbtSigningState(prev => ({
         ...prev,
         stage: 'confirming',
@@ -233,7 +238,7 @@ export default function CreateAuctionWizard() {
         },
       })
       
-      // Step 7: Success!
+      // Step 8: Success!
       setPsbtSigningState(prev => ({
         ...prev,
         stage: 'success',
@@ -904,7 +909,7 @@ function PsbtSigningWorkflow({
       case 'broadcasting':
         return {
           title: 'Broadcasting Transaction',
-          description: 'Sending your transaction to the Bitcoin network...',
+          description: 'Extracting transaction and broadcasting to Bitcoin network...',
           icon: '📡',
           color: 'blue',
         }
