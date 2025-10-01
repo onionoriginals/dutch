@@ -139,7 +139,8 @@ export function waitForWallets(maxWaitMs: number = 5000, pollIntervalMs: number 
 
 /**
  * Connect to Unisat wallet using direct API
- * IMPORTANT: Network is switched BEFORE requesting accounts to ensure correct network addresses
+ * Uses getChain/switchChain API: https://github.com/unisat-wallet/unisat-dev-docs/blob/master/wallet-api/api-docs/manage-networks.md
+ * IMPORTANT: Chain is switched BEFORE requesting accounts to ensure correct network addresses
  */
 async function connectUnisat(network: BitcoinNetworkType): Promise<Omit<ConnectedWallet, 'provider' | 'network'>> {
   console.log('[WalletAdapter] Connecting to Unisat with network:', network)
@@ -150,26 +151,29 @@ async function connectUnisat(network: BitcoinNetworkType): Promise<Omit<Connecte
     throw new Error('Unisat wallet not found. Please install the Unisat extension.')
   }
 
-  // Map our network type to Unisat's network naming
-  const networkMap: Record<BitcoinNetworkType, string> = {
-    'Mainnet': 'livenet',
-    'Testnet': 'testnet',
-    'Signet': 'signet',
+  const chainMap: Record<BitcoinNetworkType, string> = {
+    'Mainnet': 'BITCOIN_MAINNET',
+    'Testnet': 'BITCOIN_TESTNET',
+    'Signet': 'BITCOIN_SIGNET',
   }
 
-  try {
-    console.log('[WalletAdapter] Switching Unisat network to:', networkMap[network])
-    // CRITICAL: Switch network FIRST before requesting accounts
-    // This ensures we get addresses for the correct network
-    await unisat.switchNetwork(networkMap[network])
+  try {    
+    await unisat.switchChain(chainMap[network])
     
-    // Small delay to ensure network switch is complete
+    // Small delay to ensure chain switch is complete
     await new Promise(resolve => setTimeout(resolve, 100))
+    
+    // Verify the chain switch was successful
+    const verifyChain = await unisat.getChain()
+    
+    if (verifyChain.enum !== chainMap[network]) {
+      throw new Error(
+        `Failed to switch to ${network}. Please check your Unisat wallet settings and ensure ${network} is enabled.`
+      )
+    }
 
-    console.log('[WalletAdapter] Requesting Unisat accounts...')
     // Now request accounts - these will be for the correct network
     const accounts = await unisat.requestAccounts()
-    console.log('[WalletAdapter] Received accounts:', accounts)
     
     if (!accounts || accounts.length === 0) {
       throw new Error('No accounts found in Unisat wallet')
@@ -177,8 +181,7 @@ async function connectUnisat(network: BitcoinNetworkType): Promise<Omit<Connecte
 
     // Get public key
     const pubKey = await unisat.getPublicKey()
-    console.log('[WalletAdapter] Received public key')
-    
+
     const paymentAddress = accounts[0]
     const paymentPublicKey = pubKey
     const ordinalsAddress = accounts[0] // Unisat uses same address for both
@@ -204,9 +207,25 @@ async function connectUnisat(network: BitcoinNetworkType): Promise<Omit<Connecte
     }
   } catch (error: any) {
     console.error('[WalletAdapter] Unisat connection error:', error)
+    
+    // User cancelled the connection
     if (error?.message?.includes('rejected') || error?.code === 4001) {
       throw new Error('User cancelled wallet connection')
     }
+    
+    // Chain switch failed - likely chain not enabled
+    if (error?.message?.toLowerCase().includes('chain') || 
+        error?.message?.toLowerCase().includes('network')) {
+      if (network === 'Signet') {
+        throw new Error(
+          'Signet network not available. Please enable Signet in Unisat Settings > Network > Enable Signet, then try again.'
+        )
+      }
+      throw new Error(
+        `Failed to switch to ${network}. Please check your Unisat wallet settings and ensure ${network} is enabled.`
+      )
+    }
+    
     throw error
   }
 }
