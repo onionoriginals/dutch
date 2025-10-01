@@ -1,5 +1,5 @@
 ---
-import '../../styles/globals.css'
+import Layout from '../../layouts/Layout.astro'
 import Filters from '../../components/auctions/Filters'
 import List from '../../components/auctions/List'
 import { parseQueryFromSearch } from '../../lib/auctions/common'
@@ -10,13 +10,7 @@ const q = parseQueryFromSearch(search)
 // Skip SSR data fetching during build; the list will fetch on the client
 const initial = undefined
 ---
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Auctions - Originals</title>
-  </head>
-  <body>
+<Layout title="Auctions - Originals">
     <main class="min-h-screen bg-gray-50 p-4 dark:bg-gray-900">
       <div class="mx-auto max-w-6xl space-y-6">
         <header class="flex items-end justify-between gap-4">
@@ -45,6 +39,4 @@ const initial = undefined
         </section>
       </div>
     </main>
-  </body>
-</html>
-
+</Layout>

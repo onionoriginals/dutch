@@ -1,12 +1,7 @@
 ---
-import '../styles/globals.css'
+import Layout from '../layouts/Layout.astro'
 ---
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Design System</title>
-  </head>
+<Layout title="Design System - Originals" includeHeader={false}>
   <body class="p-6 space-y-10">
     <header class="flex items-center justify-between">
       <h1 class="text-3xl font-bold tracking-tight">Design System</h1>
@@ -99,5 +94,4 @@ import '../styles/globals.css'
       });
     </script>
   </body>
-  </html>
-
+</Layout>
