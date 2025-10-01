@@ -6,7 +6,7 @@ type Bid = {
   id: string
   auctionId: string
   bidderAddress: string
-  bidAmount: number
+  bidAmount: number // Total bid amount in satoshis
   quantity: number
   status: 'payment_pending' | 'payment_confirmed' | 'settled' | 'failed' | 'refunded'
   escrowAddress?: string
@@ -17,7 +17,7 @@ type Bid = {
 
 type BiddingInterfaceProps = {
   auctionId: string
-  currentPrice: number
+  currentPrice: number // Price per item in satoshis
   itemsRemaining: number
   currency?: string
   userAddress?: string
@@ -32,7 +32,7 @@ type BidState = {
   paymentData: {
     escrowAddress: string
     bidId: string
-    bidAmount: number
+    bidAmount: number // Total amount in satoshis
     quantity: number
   } | null
 }
@@ -76,7 +76,8 @@ export default function BiddingInterface({
     }
   }
 
-  const totalBidAmount = state.quantity * currentPrice
+  // currentPrice is in satoshis, totalBidAmount is also in satoshis
+  const totalBidAmountSats = state.quantity * currentPrice
 
   async function handlePlaceBid() {
     if (!userAddress) {
@@ -93,13 +94,14 @@ export default function BiddingInterface({
 
     try {
       // Call create-bid-payment to get escrow address and bidId
+      // bidAmount must be in satoshis (whole number)
       const response = await fetch('/api/clearing/create-bid-payment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           auctionId,
           bidderAddress: userAddress,
-          bidAmount: totalBidAmount,
+          bidAmount: Math.round(totalBidAmountSats), // Ensure whole satoshis
           quantity: state.quantity,
         }),
       })
@@ -118,7 +120,7 @@ export default function BiddingInterface({
         paymentData: {
           escrowAddress: json.data.escrowAddress,
           bidId: json.data.bidId,
-          bidAmount: totalBidAmount,
+          bidAmount: Math.round(totalBidAmountSats), // Store in satoshis
           quantity: state.quantity,
         },
       }))
@@ -211,7 +213,7 @@ export default function BiddingInterface({
                 Total Bid Amount:
               </span>
               <span className="text-lg font-bold text-blue-600 dark:text-blue-400">
-                {formatPrice(totalBidAmount, currency)}
+                {formatPrice(totalBidAmountSats, currency)}
               </span>
             </div>
           </div>
@@ -368,11 +370,13 @@ function BidStatusBadge({ status }: { status: Bid['status'] }) {
 }
 
 
-function formatPrice(amount: number, currency: string): string {
+function formatPrice(amountSats: number, currency: string): string {
   if (currency === 'BTC') {
-    return `${amount.toFixed(8)} BTC`
+    // Convert satoshis to BTC for display
+    const btc = amountSats / 100000000
+    return `${btc.toFixed(8)} BTC`
   }
-  return `${amount.toLocaleString()} ${currency}`
+  return `${amountSats.toLocaleString()} ${currency}`
 }
 
 function truncateAddress(addr: string): string {

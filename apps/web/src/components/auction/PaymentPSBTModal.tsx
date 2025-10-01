@@ -4,7 +4,7 @@ type PaymentPSBTModalProps = {
   auctionId: string
   bidId: string
   escrowAddress: string
-  bidAmount: number
+  bidAmount: number // Total bid amount in satoshis
   quantity: number
   currency: string
   onComplete: (bidId: string) => void
@@ -393,9 +393,11 @@ export default function PaymentPSBTModal({
   return null
 }
 
-function formatPrice(amount: number, currency: string): string {
+function formatPrice(amountSats: number, currency: string): string {
   if (currency === 'BTC') {
-    return `${amount.toFixed(8)} BTC`
+    // Convert satoshis to BTC for display
+    const btc = amountSats / 100000000
+    return `${btc.toFixed(8)} BTC`
   }
-  return `${amount.toLocaleString()} ${currency}`
+  return `${amountSats.toLocaleString()} ${currency}`
 }
