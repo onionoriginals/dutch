@@ -20,8 +20,7 @@
     "@radix-ui/react-visually-hidden": "^1.2.3",
     "astro": "^4.15.3",
     "luxon": "^3.7.2",
-    "nanostores": "^1.0.1",
-    "sats-connect": "^2.6.0"
+    "nanostores": "^1.0.1"
   },
   "devDependencies": {
     "@astrojs/tailwind": "^5",
