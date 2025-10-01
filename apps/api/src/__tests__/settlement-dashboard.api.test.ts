@@ -278,6 +278,118 @@ describe('Settlement Dashboard API Workflow', () => {
 		})
 	})
 
+	describe('Partial settlement handling', () => {
+		it('does not reuse settled inscriptions when generating PSBTs after partial settlement', async () => {
+			const auctionId = 'partial-settlement-test'
+			
+			// Create auction with 5 inscriptions
+			await app.handle(
+				jsonRequest('http://localhost/api/clearing/create-auction', 'POST', {
+					auctionId,
+					inscriptionIds: ['insc-partial-0', 'insc-partial-1', 'insc-partial-2', 'insc-partial-3', 'insc-partial-4'],
+					quantity: 5,
+					startPrice: 50000,
+					minPrice: 20000,
+					duration: 3600,
+					decrementInterval: 600,
+					sellerAddress: 'tb1pseller_partial',
+				}),
+			)
+
+			// Create and confirm first bid (2 items)
+			const payment1Res = await app.handle(
+				jsonRequest('http://localhost/api/clearing/create-bid-payment', 'POST', {
+					auctionId,
+					bidderAddress: 'tb1qbidder1partial',
+					bidAmount: 40000,
+					quantity: 2,
+				}),
+			)
+			const payment1Json: any = await payment1Res.json()
+			const bid1Id = payment1Json.data.bidId
+
+			await app.handle(
+				jsonRequest('http://localhost/api/clearing/confirm-bid-payment', 'POST', {
+					bidId: bid1Id,
+					transactionId: 'tx_partial_1',
+				}),
+			)
+
+			// Create and confirm second bid (3 items)
+			const payment2Res = await app.handle(
+				jsonRequest('http://localhost/api/clearing/create-bid-payment', 'POST', {
+					auctionId,
+					bidderAddress: 'tb1qbidder2partial',
+					bidAmount: 35000,
+					quantity: 3,
+				}),
+			)
+			const payment2Json: any = await payment2Res.json()
+			const bid2Id = payment2Json.data.bidId
+
+			await app.handle(
+				jsonRequest('http://localhost/api/clearing/confirm-bid-payment', 'POST', {
+					bidId: bid2Id,
+					transactionId: 'tx_partial_2',
+				}),
+			)
+
+			// First settlement: Generate PSBTs for all bids
+			const process1Res = await app.handle(
+				jsonRequest('http://localhost/api/clearing/process-settlement', 'POST', {
+					auctionId,
+				}),
+			)
+			const process1Json: any = await process1Res.json()
+			expect(process1Json.ok).toBe(true)
+			expect(process1Json.data.psbts).toHaveLength(5) // 2 + 3 inscriptions
+
+			// Verify first allocation gets insc-0 and insc-1
+			const bid1Psbts = process1Json.data.psbts.filter((p: any) => p.bidId === bid1Id)
+			expect(bid1Psbts).toHaveLength(2)
+			expect(bid1Psbts[0].inscriptionId).toBe('insc-partial-0')
+			expect(bid1Psbts[1].inscriptionId).toBe('insc-partial-1')
+
+			// Verify second allocation gets insc-2, insc-3, insc-4
+			const bid2Psbts = process1Json.data.psbts.filter((p: any) => p.bidId === bid2Id)
+			expect(bid2Psbts).toHaveLength(3)
+			expect(bid2Psbts[0].inscriptionId).toBe('insc-partial-2')
+			expect(bid2Psbts[1].inscriptionId).toBe('insc-partial-3')
+			expect(bid2Psbts[2].inscriptionId).toBe('insc-partial-4')
+
+			// Settle ONLY the first bid
+			await app.handle(
+				jsonRequest('http://localhost/api/clearing/mark-settled', 'POST', {
+					auctionId,
+					bidIds: [bid1Id],
+				}),
+			)
+
+			// Second settlement: Generate PSBTs again (should only include bid2's inscriptions)
+			const process2Res = await app.handle(
+				jsonRequest('http://localhost/api/clearing/process-settlement', 'POST', {
+					auctionId,
+				}),
+			)
+			const process2Json: any = await process2Res.json()
+			expect(process2Json.ok).toBe(true)
+			
+			// CRITICAL: Should only have 3 PSBTs (for bid2), not 5
+			expect(process2Json.data.psbts).toHaveLength(3)
+			
+			// CRITICAL: Should be for bid2 and use insc-2, insc-3, insc-4 (NOT insc-0, insc-1)
+			const bid2PsbtsRound2 = process2Json.data.psbts.filter((p: any) => p.bidId === bid2Id)
+			expect(bid2PsbtsRound2).toHaveLength(3)
+			expect(bid2PsbtsRound2[0].inscriptionId).toBe('insc-partial-2')
+			expect(bid2PsbtsRound2[1].inscriptionId).toBe('insc-partial-3')
+			expect(bid2PsbtsRound2[2].inscriptionId).toBe('insc-partial-4')
+
+			// Should have NO PSBTs for bid1 (already settled)
+			const bid1PsbtsRound2 = process2Json.data.psbts.filter((p: any) => p.bidId === bid1Id)
+			expect(bid1PsbtsRound2).toHaveLength(0)
+		})
+	})
+
 	describe('Settlement calculation edge cases', () => {
 		it('calculates correct clearing price based on fraction sold', async () => {
 			const auctionId = 'settlement-price-calc'

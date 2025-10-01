@@ -106,6 +106,7 @@ Comprehensive test suite covering:
 - Handles idempotent settlement marking
 - Calculates correct clearing price based on fraction sold
 - Validates PSBT structure
+- **Partial settlement handling**: Correctly tracks settled inscriptions to prevent reuse
 
 **Test Assertions**:
 - PSBT generation for confirmed bids

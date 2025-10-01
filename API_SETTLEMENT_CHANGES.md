@@ -111,13 +111,21 @@ generateSettlementPSBTs(auctionId: string): {
 **Logic**:
 1. Fetch clearing auction by ID
 2. Calculate settlement allocations
-3. For each allocation with `payment_confirmed` status:
-   - Iterate through inscription IDs for the bid's quantity
-   - Create a PSBT with:
-     - Input: Inscription UTXO (mock in development)
-     - Output: Transfer to bidder's address at dust limit (546 sats)
-   - Add network configuration
+3. For each allocation:
+   - If bid is already `settled`: Skip PSBT generation but advance inscription index to avoid reusing inscriptions
+   - If bid is `payment_confirmed`: Generate PSBTs
+     - Iterate through inscription IDs for the bid's quantity
+     - Create a PSBT with:
+       - Input: Inscription UTXO (mock in development)
+       - Output: Transfer to bidder's address at dust limit (546 sats)
+     - Add network configuration
 4. Return array of PSBT objects
+
+**Partial Settlement Support**:
+The method correctly handles partial settlements where some bids are already settled:
+- Tracks which inscriptions have been allocated to settled bids
+- Prevents duplicate PSBT generation for already-transferred inscriptions
+- Safe to call multiple times during incremental settlement process
 
 **PSBT Structure** (per inscription):
 - **Input**: 

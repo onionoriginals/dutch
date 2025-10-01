@@ -868,7 +868,14 @@ export class SecureDutchyDatabase {
       const bid = this.bids.get(alloc.bidId);
       if (!bid) continue;
       
-      // Only generate PSBTs for payment_confirmed bids (not already settled)
+      // If bid is already settled, skip PSBT generation but advance inscription index
+      // to avoid reusing inscriptions that were already transferred
+      if (bid.status === 'settled') {
+        inscriptionIdx += alloc.quantity;
+        continue;
+      }
+      
+      // Only generate PSBTs for payment_confirmed bids
       if (bid.status !== 'payment_confirmed') continue;
       
       for (let i = 0; i < alloc.quantity && inscriptionIdx < auction.inscription_ids.length; i++) {
