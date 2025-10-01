@@ -23,6 +23,21 @@ export interface ConnectedWallet {
   network: BitcoinNetworkType
 }
 
+export interface Inscription {
+  inscriptionId: string
+  inscriptionNumber?: number
+  address: string
+  outputValue: number
+  content?: string
+  contentType?: string
+  contentLength?: number
+  timestamp?: number
+  genesisTransaction?: string
+  location?: string
+  output?: string
+  offset?: number
+}
+
 export interface WalletCapabilities {
   hasUnisat: boolean
   hasXverse: boolean
@@ -297,4 +312,125 @@ export function formatAddress(address: string, chars: number = 6): string {
     return address
   }
   return `${address.slice(0, chars)}...${address.slice(-chars)}`
+}
+
+/**
+ * Get inscriptions from connected wallet
+ * Supports Unisat and Xverse wallets
+ */
+export async function getInscriptions(
+  provider: WalletProvider,
+  address: string
+): Promise<Inscription[]> {
+  if (typeof window === 'undefined') {
+    throw new Error('Wallet operations are only available in browser environment')
+  }
+
+  try {
+    switch (provider) {
+      case 'unisat':
+        return await getUnisatInscriptions(address)
+
+      case 'xverse':
+        return await getXverseInscriptions(address)
+
+      default:
+        throw new Error(`Unsupported wallet provider: ${provider}`)
+    }
+  } catch (error) {
+    console.error('Failed to fetch inscriptions:', error)
+    throw new Error(
+      `Failed to fetch inscriptions from ${provider}: ${
+        error instanceof Error ? error.message : 'Unknown error'
+      }`
+    )
+  }
+}
+
+/**
+ * Get inscriptions from Unisat wallet
+ */
+async function getUnisatInscriptions(address: string): Promise<Inscription[]> {
+  const unisat = (window as any).unisat
+  if (!unisat) {
+    throw new Error('Unisat wallet not found')
+  }
+
+  try {
+    // Unisat provides getInscriptions method
+    const response = await unisat.getInscriptions(0, 100) // cursor, size
+    
+    if (!response || !Array.isArray(response.list)) {
+      return []
+    }
+
+    // Map Unisat response to our Inscription interface
+    return response.list.map((ins: any) => ({
+      inscriptionId: ins.inscriptionId,
+      inscriptionNumber: ins.inscriptionNumber,
+      address: ins.address || address,
+      outputValue: ins.outputValue || 0,
+      content: ins.content,
+      contentType: ins.contentType,
+      contentLength: ins.contentLength,
+      timestamp: ins.timestamp,
+      genesisTransaction: ins.genesisTransaction,
+      location: ins.location,
+      output: ins.output,
+      offset: ins.offset,
+    }))
+  } catch (error) {
+    console.error('Unisat getInscriptions error:', error)
+    // If the method doesn't exist or fails, return empty array
+    return []
+  }
+}
+
+/**
+ * Get inscriptions from Xverse wallet
+ * Xverse doesn't have a direct method, so we'll use their API
+ */
+async function getXverseInscriptions(address: string): Promise<Inscription[]> {
+  try {
+    // Determine network (testnet or mainnet)
+    const network = address.startsWith('tb1') ? 'testnet' : 'mainnet'
+    const apiBase = network === 'testnet' 
+      ? 'https://api-3.testnet.xverse.app'
+      : 'https://api-3.xverse.app'
+
+    // Fetch inscriptions from Xverse API
+    const response = await fetch(
+      `${apiBase}/v1/address/${address}/ordinals/inscriptions?offset=0&limit=100`
+    )
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`)
+    }
+
+    const data = await response.json()
+    
+    if (!data || !Array.isArray(data.results)) {
+      return []
+    }
+
+    // Map Xverse API response to our Inscription interface
+    return data.results.map((ins: any) => ({
+      inscriptionId: ins.id,
+      inscriptionNumber: ins.number,
+      address: address,
+      outputValue: ins.value || 0,
+      content: ins.content_type,
+      contentType: ins.content_type,
+      contentLength: ins.content_length,
+      timestamp: ins.timestamp ? new Date(ins.timestamp).getTime() : undefined,
+      genesisTransaction: ins.genesis_transaction,
+      location: ins.location,
+      output: ins.output,
+      offset: ins.offset,
+    }))
+  } catch (error) {
+    console.error('Xverse inscriptions fetch error:', error)
+    // Return empty array if fetch fails
+    return []
+  }
 }

@@ -4,6 +4,7 @@ import { Input } from '../inputs/Input'
 import { NumberInput } from '../inputs/NumberInput'
 import { Textarea } from '../inputs/Textarea'
 import { DateTimePicker } from '../inputs/DateTimePicker'
+import { InscriptionSelector } from '../inputs/InscriptionSelector'
 import { DutchAuctionSchema, dutchAuctionStepFields } from '../../lib/validation/auction'
 import { normalizeDutch } from '../../utils/normalizeAuction'
 import { btcToSats, formatSats, btcToUsd, formatCurrency, getBtcUsdRate } from '../../utils/currency'
@@ -448,14 +449,25 @@ export default function CreateAuctionWizard() {
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">Specify the inscriptions being auctioned and your Bitcoin address</p>
             </div>
             <FormField name="inscriptionIds">
-              <FieldLabel>Inscription IDs (one per line)</FieldLabel>
-              <Textarea 
-                placeholder="e.g.&#10;abc123...def456i0&#10;789abc...123def i1&#10;xyz987...654abci0" 
-                rows={6}
+              <FieldLabel>Inscription IDs</FieldLabel>
+              <ControlAdapter
+                render={(field) => (
+                  <InscriptionSelector
+                    value={field.value}
+                    onChange={field.onChange}
+                    walletProvider={wallet?.provider}
+                    walletAddress={wallet?.ordinalsAddress}
+                    placeholder="e.g.&#10;abc123...def456i0&#10;789abc...123def i1&#10;xyz987...654abci0"
+                  />
+                )}
               />
               <InscriptionCountHelper />
               <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                Enter inscription IDs in the format: &lt;txid&gt;i&lt;vout&gt; (one per line)
+                {wallet ? (
+                  'Select inscriptions from your wallet or enter them manually'
+                ) : (
+                  'Enter inscription IDs in the format: <txid>i<vout> (one per line)'
+                )}
               </div>
               <FieldError />
             </FormField>
