@@ -5,6 +5,7 @@ import {
   saveWalletToStorage,
   loadWalletFromStorage,
   getAvailableWallets,
+  waitForWallets,
   type ConnectedWallet,
   type WalletProvider,
   type BitcoinNetworkType,
@@ -38,8 +39,9 @@ function createWalletStore() {
 
   // Initialize on client-side only
   let isInitialized = false
+  let walletCheckInProgress = false
 
-  function initializeStore() {
+  async function initializeStore() {
     if (typeof window === 'undefined') return
     
     console.log('[WalletStore] Initializing store...', { isInitialized })
@@ -55,12 +57,22 @@ function createWalletStore() {
         $walletState.setKey('wallet', storedWallet)
         $walletState.setKey('network', storedWallet.network)
       }
+      
+      // Start polling for wallet extensions (they load asynchronously)
+      if (!walletCheckInProgress) {
+        walletCheckInProgress = true
+        console.log('[WalletStore] Waiting for wallet extensions to load...')
+        const wallets = await waitForWallets(5000, 100)
+        console.log('[WalletStore] Available wallets after polling:', wallets)
+        $walletState.setKey('availableWallets', wallets)
+        walletCheckInProgress = false
+      }
+    } else {
+      // On subsequent calls, just check immediately (for re-renders)
+      const wallets = getAvailableWallets()
+      console.log('[WalletStore] Available wallets after check:', wallets)
+      $walletState.setKey('availableWallets', wallets)
     }
-
-    // Always re-check available wallets (wallet extensions may load late)
-    const wallets = getAvailableWallets()
-    console.log('[WalletStore] Available wallets after check:', wallets)
-    $walletState.setKey('availableWallets', wallets)
   }
 
   // Actions
