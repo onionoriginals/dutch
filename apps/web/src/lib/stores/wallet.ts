@@ -40,50 +40,60 @@ function createWalletStore() {
   let isInitialized = false
 
   function initializeStore() {
-    if (typeof window === 'undefined' || isInitialized) return
+    if (typeof window === 'undefined') return
     
-    isInitialized = true
+    console.log('[WalletStore] Initializing store...', { isInitialized })
     
-    // Load wallet from localStorage on initialization
-    const storedWallet = loadWalletFromStorage()
-    if (storedWallet) {
-      $walletState.setKey('wallet', storedWallet)
-      $walletState.setKey('network', storedWallet.network)
+    // Only load from storage once
+    if (!isInitialized) {
+      isInitialized = true
+      
+      // Load wallet from localStorage on initialization
+      const storedWallet = loadWalletFromStorage()
+      if (storedWallet) {
+        console.log('[WalletStore] Loaded wallet from storage:', storedWallet.provider, storedWallet.paymentAddress)
+        $walletState.setKey('wallet', storedWallet)
+        $walletState.setKey('network', storedWallet.network)
+      }
     }
 
-    // Check available wallets
+    // Always re-check available wallets (wallet extensions may load late)
     const wallets = getAvailableWallets()
+    console.log('[WalletStore] Available wallets after check:', wallets)
     $walletState.setKey('availableWallets', wallets)
   }
 
   // Actions
-  async function connectWallet(provider: WalletProvider): Promise<void> {
+  const connectWallet = async (provider: WalletProvider): Promise<void> => {
     if (typeof window === 'undefined') return
 
+    console.log('[WalletStore] Attempting to connect to:', provider)
     $walletState.setKey('isConnecting', true)
     $walletState.setKey('error', null)
 
     try {
       const network = $walletState.get().network
+      console.log('[WalletStore] Connecting with network:', network)
       const connectedWallet = await connectWalletAdapter(provider, network)
+      console.log('[WalletStore] Successfully connected:', connectedWallet.paymentAddress)
       $walletState.setKey('wallet', connectedWallet)
       saveWalletToStorage(connectedWallet)
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to connect wallet'
+      console.error('[WalletStore] Connection error:', err)
       $walletState.setKey('error', errorMessage)
-      console.error('Wallet connection error:', err)
     } finally {
       $walletState.setKey('isConnecting', false)
     }
   }
 
-  function disconnectWallet(): void {
+  const disconnectWallet = (): void => {
     $walletState.setKey('wallet', null)
     $walletState.setKey('error', null)
     disconnectWalletAdapter()
   }
 
-  function switchNetwork(newNetwork: BitcoinNetworkType): void {
+  const switchNetwork = (newNetwork: BitcoinNetworkType): void => {
     const currentWallet = $walletState.get().wallet
     
     $walletState.setKey('network', newNetwork)
@@ -96,7 +106,7 @@ function createWalletStore() {
     }
   }
 
-  function clearError(): void {
+  const clearError = (): void => {
     $walletState.setKey('error', null)
   }
 
