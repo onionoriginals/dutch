@@ -176,11 +176,34 @@ const response = await fetch(
 6. **Caching**: Cache inscription data to reduce API calls
 7. **Refresh Button**: Manually refresh inscription list
 
+## Inscription Content Previews
+
+### Visual Content Rendering
+The InscriptionSelector now includes rich visual previews for different content types:
+
+- **Images** (`image/*`): Displays the actual image from ordinals.com
+- **Text** (`text/plain`): Shows a document icon with "TXT" badge
+- **HTML** (`text/html`): Renders content in a sandboxed iframe with "HTML" badge
+- **SVG** (`image/svg+xml`): Displays SVG content with "SVG" badge
+- **JSON** (`application/json`): Shows JSON file icon with "JSON" badge
+- **Video** (`video/*`): Displays video thumbnail with "VIDEO" badge
+- **Audio** (`audio/*`): Shows music icon with "AUDIO" badge
+- **Unknown types**: Shows gradient ordinals icon with inscription number
+
+### Preview Component Features
+- **64x64px thumbnails**: Compact but visible previews
+- **Content type badges**: Visual indicators for file types
+- **Lazy loading**: Images/iframes load only when scrolled into view
+- **Error handling**: Graceful fallback to default icon on load errors
+- **Responsive design**: Adapts to different screen sizes
+- **Dark mode support**: Works seamlessly in light and dark themes
+
 ## Files Modified
 
 1. `/workspace/apps/web/src/lib/wallet/walletAdapter.ts` - Added inscription fetching
-2. `/workspace/apps/web/src/components/inputs/InscriptionSelector.tsx` - New component
-3. `/workspace/apps/web/src/components/auction/CreateAuctionWizard.tsx` - Integrated selector
+2. `/workspace/apps/web/src/components/inputs/InscriptionSelector.tsx` - New component with previews
+3. `/workspace/apps/web/src/components/inputs/InscriptionPreview.tsx` - New preview component
+4. `/workspace/apps/web/src/components/auction/CreateAuctionWizard.tsx` - Integrated selector
 
 ## Compatibility
 

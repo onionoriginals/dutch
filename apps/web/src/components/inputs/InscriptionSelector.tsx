@@ -1,5 +1,6 @@
 import React from 'react'
 import { getInscriptions, type Inscription, type WalletProvider } from '../../lib/wallet/walletAdapter'
+import { InscriptionPreview } from './InscriptionPreview'
 
 export interface InscriptionSelectorProps {
   value?: string // newline-separated inscription IDs
@@ -228,6 +229,14 @@ export function InscriptionSelector({
                   disabled={disabled}
                   className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded disabled:opacity-50"
                 />
+                
+                {/* Inscription Preview */}
+                <InscriptionPreview
+                  inscriptionId={inscription.inscriptionId}
+                  contentType={inscription.contentType}
+                  inscriptionNumber={inscription.inscriptionNumber}
+                />
+                
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     {inscription.inscriptionNumber !== undefined && (
