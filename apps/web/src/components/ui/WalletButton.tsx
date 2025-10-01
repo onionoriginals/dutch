@@ -29,7 +29,7 @@ export default function WalletButton() {
     disconnectWallet()
   }
 
-  const handleNetworkSwitch = (newNetwork: 'Mainnet' | 'Testnet') => {
+  const handleNetworkSwitch = (newNetwork: 'Mainnet' | 'Testnet' | 'Signet') => {
     setShowNetworkMenu(false)
     switchNetwork(newNetwork)
   }
@@ -110,6 +110,8 @@ export default function WalletButton() {
                   <span className={`text-xs font-medium px-2 py-0.5 rounded ${
                     network === 'Mainnet' 
                       ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                      : network === 'Signet'
+                      ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'
                       : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
                   }`}>
                     {network}
@@ -192,6 +194,21 @@ export default function WalletButton() {
                 >
                   <span>Testnet</span>
                   {network === 'Testnet' && (
+                    <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                  )}
+                </button>
+                <button
+                  onClick={() => handleNetworkSwitch('Signet')}
+                  className={`w-full flex items-center justify-between px-3 py-2 text-sm rounded transition-colors ${
+                    network === 'Signet'
+                      ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400'
+                      : 'text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  <span>Signet</span>
+                  {network === 'Signet' && (
                     <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                     </svg>
