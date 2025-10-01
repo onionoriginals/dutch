@@ -64,6 +64,80 @@ export function getAvailableWallets(): WalletProvider[] {
 }
 
 /**
+ * Wait for wallet extensions to load with polling
+ * Wallet extensions inject themselves asynchronously, so we need to wait
+ */
+export function waitForWallets(maxWaitMs: number = 5000, pollIntervalMs: number = 100): Promise<WalletProvider[]> {
+  return new Promise((resolve) => {
+    const startTime = Date.now()
+    let resolved = false
+    
+    const resolveOnce = (wallets: WalletProvider[]) => {
+      if (!resolved) {
+        resolved = true
+        resolve(wallets)
+      }
+    }
+    
+    const checkWallets = () => {
+      if (resolved) return
+      
+      const wallets = getAvailableWallets()
+      
+      // If we found wallets or exceeded max wait time, resolve
+      if (wallets.length > 0 || Date.now() - startTime >= maxWaitMs) {
+        resolveOnce(wallets)
+        return
+      }
+      
+      // Continue polling
+      setTimeout(checkWallets, pollIntervalMs)
+    }
+    
+    // Listen for wallet-specific ready events
+    if (typeof window !== 'undefined') {
+      // Unisat ready event
+      const handleUnisatReady = () => {
+        console.log('[WalletAdapter] Unisat ready event detected')
+        setTimeout(() => {
+          const wallets = getAvailableWallets()
+          if (wallets.length > 0) {
+            resolveOnce(wallets)
+          }
+        }, 50)
+      }
+      
+      // Xverse ready event
+      const handleXverseReady = () => {
+        console.log('[WalletAdapter] Xverse ready event detected')
+        setTimeout(() => {
+          const wallets = getAvailableWallets()
+          if (wallets.length > 0) {
+            resolveOnce(wallets)
+          }
+        }, 50)
+      }
+      
+      // Add event listeners
+      window.addEventListener('unisat#initialized', handleUnisatReady)
+      window.addEventListener('xverse#initialized', handleXverseReady)
+      
+      // Clean up listeners when resolved
+      const cleanup = () => {
+        window.removeEventListener('unisat#initialized', handleUnisatReady)
+        window.removeEventListener('xverse#initialized', handleXverseReady)
+      }
+      
+      // Ensure cleanup happens after max wait time
+      setTimeout(cleanup, maxWaitMs)
+    }
+    
+    // Start polling immediately
+    checkWallets()
+  })
+}
+
+/**
  * Connect to Unisat wallet using direct API
  * IMPORTANT: Network is switched BEFORE requesting accounts to ensure correct network addresses
  */

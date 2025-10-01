@@ -23,14 +23,8 @@ export function useWallet() {
 
   // Initialize store on mount
   useEffect(() => {
+    // Initialize store - this now handles polling internally
     walletStore.initializeStore()
-    
-    // Re-check for wallets after a delay to catch late-loading extensions
-    const timeout = setTimeout(() => {
-      walletStore.initializeStore()
-    }, 1000)
-    
-    return () => clearTimeout(timeout)
   }, [])
 
   return {
