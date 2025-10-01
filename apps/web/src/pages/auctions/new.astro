@@ -1,27 +1,17 @@
 ---
+import Layout from '../../layouts/Layout.astro'
 import CreateAuctionWizard from '../../components/auction/CreateAuctionWizard';
-import WalletButton from '../../components/ui/WalletButton';
-import ToastContainer from '../../components/ui/ToastContainer';
-import '../../styles/globals.css';
 ---
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Create Auction - Originals</title>
-  </head>
-  <body>
-    <ToastContainer client:load />
+<Layout title="Create Auction - Originals">
     <main class="min-h-screen bg-gray-50 dark:bg-gray-900">
       <div class="mx-auto max-w-2xl px-4 py-8">
-        <nav class="mb-8 flex items-center justify-between">
+        <nav class="mb-8">
           <a 
             href="/auctions" 
             class="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 text-sm underline"
           >
             ← Back to Auctions
           </a>
-          <WalletButton client:load />
         </nav>
         
         <div class="rounded-lg bg-white p-6 shadow-sm dark:bg-gray-800">
@@ -29,5 +19,4 @@ import '../../styles/globals.css';
         </div>
       </div>
     </main>
-  </body>
-</html>
+</Layout>
