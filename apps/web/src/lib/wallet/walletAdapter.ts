@@ -1,5 +1,8 @@
-// Bitcoin Wallet Adapter using native wallet APIs
-// This adapter provides direct integration with Bitcoin wallet browser extensions
+// Bitcoin Wallet Adapter - Hybrid approach using both sats-connect and direct APIs
+// Uses sats-connect for Xverse (which implements the sats-connect protocol)
+// Uses direct APIs for Unisat and Leather for better control
+
+import { getAddress, type GetAddressOptions, type GetAddressResponse } from 'sats-connect'
 
 export type WalletProvider = 'unisat' | 'leather' | 'xverse'
 export type BitcoinNetworkType = 'Mainnet' | 'Testnet' | 'Signet'
@@ -58,7 +61,7 @@ export function getAvailableWallets(): WalletProvider[] {
 }
 
 /**
- * Connect to Unisat wallet
+ * Connect to Unisat wallet using direct API
  */
 async function connectUnisat(network: BitcoinNetworkType): Promise<Omit<ConnectedWallet, 'provider' | 'network'>> {
   const unisat = (window as any).unisat
@@ -109,80 +112,59 @@ async function connectUnisat(network: BitcoinNetworkType): Promise<Omit<Connecte
 }
 
 /**
- * Connect to Xverse wallet using sats-connect pattern
+ * Connect to Xverse wallet using sats-connect (standard protocol)
+ * Xverse implements the sats-connect protocol, so we use it directly
  */
 async function connectXverse(network: BitcoinNetworkType): Promise<Omit<ConnectedWallet, 'provider' | 'network'>> {
-  // Xverse requires using a connection pattern similar to sats-connect
-  // The wallet requires the request to come through a specific API
-  
   return new Promise((resolve, reject) => {
-    const xverseProvider = (window as any).XverseProviders?.BitcoinProvider || (window as any).BitcoinProvider
-    
-    if (!xverseProvider) {
-      reject(new Error('Xverse wallet not found. Please install the Xverse extension.'))
-      return
-    }
-
-    // Xverse uses a request-based API similar to sats-connect
-    const request = {
-      getAddresses: {
-        purposes: ['payment', 'ordinals'] as const,
+    const options: GetAddressOptions = {
+      payload: {
+        purposes: ['payment', 'ordinals'],
         message: 'Connect your wallet to create and bid on auctions',
         network: {
           type: network,
         },
       },
-    }
+      onFinish: (response: GetAddressResponse) => {
+        try {
+          const paymentAddress = response.addresses.find(
+            (addr) => addr.purpose === 'payment'
+          )
+          const ordinalsAddress = response.addresses.find(
+            (addr) => addr.purpose === 'ordinals'
+          )
 
-    // Call the wallet
-    xverseProvider
-      .request('getAddresses', request.getAddresses)
-      .then((response: any) => {
-        if (!response || !response.addresses) {
-          reject(new Error('Could not retrieve addresses from Xverse wallet'))
-          return
-        }
+          if (!paymentAddress || !ordinalsAddress) {
+            reject(new Error('Could not retrieve wallet addresses'))
+            return
+          }
 
-        const addresses = response.addresses
-        const paymentAddr = addresses.find((addr: any) => addr.purpose === 'payment')
-        const ordinalsAddr = addresses.find((addr: any) => addr.purpose === 'ordinals')
-
-        if (!paymentAddr || !ordinalsAddr) {
-          reject(new Error('Could not find payment or ordinals address'))
-          return
-        }
-
-        resolve({
-          addresses: [
-            {
-              address: paymentAddr.address,
-              publicKey: paymentAddr.publicKey,
-              purpose: 'payment',
-            },
-            {
-              address: ordinalsAddr.address,
-              publicKey: ordinalsAddr.publicKey,
-              purpose: 'ordinals',
-            },
-          ],
-          paymentAddress: paymentAddr.address,
-          paymentPublicKey: paymentAddr.publicKey,
-          ordinalsAddress: ordinalsAddr.address,
-          ordinalsPublicKey: ordinalsAddr.publicKey,
-        })
-      })
-      .catch((error: any) => {
-        if (error && error.message && error.message.includes('User rejected')) {
-          reject(new Error('User cancelled wallet connection'))
-        } else {
+          resolve({
+            addresses: response.addresses.map((addr) => ({
+              address: addr.address,
+              publicKey: addr.publicKey,
+              purpose: addr.purpose as 'payment' | 'ordinals',
+            })),
+            paymentAddress: paymentAddress.address,
+            paymentPublicKey: paymentAddress.publicKey,
+            ordinalsAddress: ordinalsAddress.address,
+            ordinalsPublicKey: ordinalsAddress.publicKey,
+          })
+        } catch (error) {
           reject(error)
         }
-      })
+      },
+      onCancel: () => {
+        reject(new Error('User cancelled wallet connection'))
+      },
+    }
+
+    getAddress(options)
   })
 }
 
 /**
- * Connect to Leather wallet
+ * Connect to Leather wallet using direct API
  */
 async function connectLeather(network: BitcoinNetworkType): Promise<Omit<ConnectedWallet, 'provider' | 'network'>> {
   return new Promise((resolve, reject) => {
