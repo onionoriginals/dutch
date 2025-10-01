@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
-import type { BitcoinNetworkType } from 'sats-connect'
 import {
   connectWallet as connectWalletAdapter,
   disconnectWallet as disconnectWalletAdapter,
@@ -8,6 +7,7 @@ import {
   getAvailableWallets,
   type ConnectedWallet,
   type WalletProvider,
+  type BitcoinNetworkType,
 } from './walletAdapter'
 
 interface WalletContextType {

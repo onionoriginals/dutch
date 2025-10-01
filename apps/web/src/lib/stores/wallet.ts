@@ -1,5 +1,4 @@
 import { atom, computed, map } from 'nanostores'
-import type { BitcoinNetworkType } from 'sats-connect'
 import {
   connectWallet as connectWalletAdapter,
   disconnectWallet as disconnectWalletAdapter,
@@ -8,6 +7,7 @@ import {
   getAvailableWallets,
   type ConnectedWallet,
   type WalletProvider,
+  type BitcoinNetworkType,
 } from '../wallet/walletAdapter'
 
 // Types
@@ -127,15 +127,15 @@ function getWalletStore() {
 export const walletStore = getWalletStore()
 
 // Export convenience selectors
-export const $wallet = computed(walletStore.$walletState, (state) => state.wallet)
-export const $isConnecting = computed(walletStore.$walletState, (state) => state.isConnecting)
-export const $error = computed(walletStore.$walletState, (state) => state.error)
-export const $network = computed(walletStore.$walletState, (state) => state.network)
-export const $availableWallets = computed(walletStore.$walletState, (state) => state.availableWallets)
+export const $wallet = computed(walletStore.$walletState, (state: WalletState) => state.wallet)
+export const $isConnecting = computed(walletStore.$walletState, (state: WalletState) => state.isConnecting)
+export const $error = computed(walletStore.$walletState, (state: WalletState) => state.error)
+export const $network = computed(walletStore.$walletState, (state: WalletState) => state.network)
+export const $availableWallets = computed(walletStore.$walletState, (state: WalletState) => state.availableWallets)
 
 // Export actions
 export const { connectWallet, disconnectWallet, switchNetwork, clearError, initializeStore } = walletStore
 
 // Convenience selectors
-export const $walletAddress = computed($wallet, (wallet) => wallet?.paymentAddress || null)
-export const $isWalletConnected = computed($wallet, (wallet) => wallet !== null)
+export const $walletAddress = computed($wallet, (wallet: ConnectedWallet | null) => wallet?.paymentAddress || null)
+export const $isWalletConnected = computed($wallet, (wallet: ConnectedWallet | null) => wallet !== null)

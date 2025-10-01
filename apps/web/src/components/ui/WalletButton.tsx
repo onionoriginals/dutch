@@ -100,29 +100,27 @@ export default function WalletButton({ className }: WalletButtonProps) {
         {showMenu && (
           <>
             <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)} />
-            <div className="card absolute right-0 z-50 mt-3 w-80 overflow-hidden">
-              <div className="card-content space-y-5">
-                <div className="space-y-3">
-                  <div className="text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">Connected wallet</div>
-                  <div className="text-sm font-semibold text-foreground break-words">{wallet.paymentAddress}</div>
-                  <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-secondary/60 px-3 py-1 text-xs text-muted-foreground">
-                    <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                    {wallet.provider.charAt(0).toUpperCase() + wallet.provider.slice(1)}
-                  </div>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <span>Network</span>
-                    <span className={clsx('rounded-full px-2 py-0.5 text-[0.7rem] font-semibold',
-                      network === 'Mainnet'
-                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
+            <div className="card absolute right-0 z-50 mt-3 w-72 overflow-hidden">
+              <div className="card-content space-y-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.3em] text-muted-foreground">Wallet</p>
+                  <p className="text-sm font-medium text-foreground">{wallet.provider.charAt(0).toUpperCase() + wallet.provider.slice(1)}</p>
+                  <p className="break-all text-xs text-muted-foreground">{wallet.paymentAddress}</p>
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">Network:</span>
+                    <span className={clsx(
+                      'rounded-full px-2 py-0.5 text-xs font-medium',
+                      network === 'Mainnet' 
+                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200'
                         : network === 'Signet'
-                        ? 'bg-purple-100 text-purple-700 dark:bg-purple-500/10 dark:text-purple-300'
-                        : 'bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-200'
+                        ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'
+                        : 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'
+
                     )}>
                       {network}
                     </span>
                   </div>
                 </div>
-
                 <div className="grid gap-2 text-sm">
                   <button
                     onClick={handleCopyAddress}
