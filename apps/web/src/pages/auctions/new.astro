@@ -11,7 +11,7 @@ import '../../styles/globals.css';
     <title>Create Auction - Originals</title>
   </head>
   <body>
-    <WalletProvider client:only="react">
+    <WalletProvider client:load>
       <main class="min-h-screen bg-gray-50 dark:bg-gray-900">
         <div class="mx-auto max-w-2xl px-4 py-8">
           <nav class="mb-8 flex items-center justify-between">
@@ -21,11 +21,11 @@ import '../../styles/globals.css';
             >
               ← Back to Auctions
             </a>
-            <WalletButton client:only="react" />
+            <WalletButton client:load />
           </nav>
           
           <div class="rounded-lg bg-white p-6 shadow-sm dark:bg-gray-800">
-            <CreateAuctionWizard client:only="react" />
+            <CreateAuctionWizard client:load />
           </div>
         </div>
       </main>

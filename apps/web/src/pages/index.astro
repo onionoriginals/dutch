@@ -12,7 +12,7 @@ import { WalletProvider } from '../lib/wallet/WalletContext'
     <title>Originals Auctions</title>
   </head>
   <body class="min-h-screen bg-gray-50 dark:bg-gray-950">
-    <WalletProvider client:only="react">
+    <WalletProvider client:load>
       <header class="border-b bg-white/80 backdrop-blur dark:border-gray-900 dark:bg-gray-900/80">
         <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
           <a href="/" class="flex items-center gap-2 text-lg font-semibold">
@@ -23,7 +23,7 @@ import { WalletProvider } from '../lib/wallet/WalletContext'
             <a href="/auctions" class="text-gray-700 hover:text-black dark:text-gray-300 dark:hover:text-white">Auctions</a>
             <a href="/docs/auction-type" class="text-gray-700 hover:text-black dark:text-gray-300 dark:hover:text-white">Docs</a>
             <a href="https://github.com" class="text-gray-700 hover:text-black dark:text-gray-300 dark:hover:text-white" rel="noreferrer" target="_blank">GitHub</a>
-            <WalletButton client:only="react" />
+            <WalletButton client:load />
           </nav>
         </div>
       </header>
