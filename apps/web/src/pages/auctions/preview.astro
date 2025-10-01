@@ -1,6 +1,10 @@
 ---
 import '../../styles/globals.css';
 import Preview from '../../react/auctions/PreviewPage';
+import Header from '../../components/ui/Header.astro'
+import { WalletProvider } from '../../lib/wallet/WalletContext'
+import { ToastProvider } from '../../lib/toast/ToastContext'
+import ToastContainer from '../../components/ui/ToastContainer'
 const { searchParams } = Astro.url;
 const stateParam = searchParams.get('state');
 const typeParam = searchParams.get('type');
@@ -9,14 +13,20 @@ const typeParam = searchParams.get('type');
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Auction Preview</title>
+    <title>Auction Preview - Originals</title>
   </head>
-  <body>
-    <main class="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <div class="mx-auto max-w-5xl px-4 py-8">
-        <Preview client:only="react" stateParam={stateParam} typeParam={typeParam} />
-      </div>
-    </main>
+  <body class="min-h-screen bg-gray-50 dark:bg-gray-950">
+    <ToastProvider client:load>
+      <WalletProvider client:load>
+        <ToastContainer client:load />
+        <Header />
+        <main>
+          <div class="mx-auto max-w-5xl px-4 py-8">
+            <Preview client:only="react" stateParam={stateParam} typeParam={typeParam} />
+          </div>
+        </main>
+      </WalletProvider>
+    </ToastProvider>
   </body>
   </html>
 

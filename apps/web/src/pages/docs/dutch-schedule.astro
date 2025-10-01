@@ -1,16 +1,25 @@
 ---
 import DemoDutchEditor from '../../components/auction/DemoDutchEditor'
+import Header from '../../components/ui/Header.astro'
+import { WalletProvider } from '../../lib/wallet/WalletContext'
+import { ToastProvider } from '../../lib/toast/ToastContext'
+import ToastContainer from '../../components/ui/ToastContainer'
+import '../../styles/globals.css'
 ---
 
 <html>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>DutchPriceScheduleEditor Usage</title>
+    <title>DutchPriceScheduleEditor Usage - Originals</title>
   </head>
-  <body>
-    <main style="padding: 24px; max-width: 820px; margin: 0 auto;">
-      <h1 style="font-size: 1.5rem; font-weight: 700;">DutchPriceScheduleEditor</h1>
+  <body class="min-h-screen bg-gray-50 dark:bg-gray-950">
+    <ToastProvider client:load>
+      <WalletProvider client:load>
+        <ToastContainer client:load />
+        <Header />
+        <main style="padding: 24px; max-width: 820px; margin: 0 auto;">
+          <h1 style="font-size: 1.5rem; font-weight: 700;">DutchPriceScheduleEditor</h1>
       <p>A controlled editor with live SVG sparkline preview. Emits a normalized schedule with <code>points</code> and <code>errors</code>.</p>
       <DemoDutchEditor client:load />
       <h2 style="margin-top:16px; font-weight:600;">Validation</h2>
@@ -19,6 +28,8 @@ import DemoDutchEditor from '../../components/auction/DemoDutchEditor'
         <li>durationSeconds &gt; 0</li>
         <li>intervalSeconds &gt; 0 and divides duration</li>
       </ul>
-    </main>
+        </main>
+      </WalletProvider>
+    </ToastProvider>
   </body>
 </html>

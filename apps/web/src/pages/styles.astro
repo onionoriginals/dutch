@@ -1,17 +1,26 @@
 ---
 import '../styles/globals.css'
+import Header from '../components/ui/Header.astro'
+import { WalletProvider } from '../lib/wallet/WalletContext'
+import { ToastProvider } from '../lib/toast/ToastContext'
+import ToastContainer from '../components/ui/ToastContainer'
 ---
 <html>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Design System</title>
+    <title>Design System - Originals</title>
   </head>
-  <body class="p-6 space-y-10">
-    <header class="flex items-center justify-between">
-      <h1 class="text-3xl font-bold tracking-tight">Design System</h1>
-      <button id="theme-toggle" class="btn-ghost">Toggle theme</button>
-    </header>
+  <body class="min-h-screen bg-gray-50 dark:bg-gray-950">
+    <ToastProvider client:load>
+      <WalletProvider client:load>
+        <ToastContainer client:load />
+        <Header />
+        <div class="p-6 space-y-10">
+          <header class="flex items-center justify-between">
+            <h1 class="text-3xl font-bold tracking-tight">Design System</h1>
+            <button id="theme-toggle" class="btn-ghost">Toggle theme</button>
+          </header>
 
     <section>
       <h2 class="text-xl font-semibold mb-4">Colors</h2>
@@ -98,6 +107,9 @@ import '../styles/globals.css'
         document.documentElement.classList.toggle('dark');
       });
     </script>
+        </div>
+      </WalletProvider>
+    </ToastProvider>
   </body>
   </html>
 

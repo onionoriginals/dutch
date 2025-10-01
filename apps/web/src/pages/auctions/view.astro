@@ -2,30 +2,40 @@
 import '../../styles/globals.css'
 import React from 'react'
 import AuctionView from '../../react/auctions/View'
+import Header from '../../components/ui/Header.astro'
+import { WalletProvider } from '../../lib/wallet/WalletContext'
+import { ToastProvider } from '../../lib/toast/ToastContext'
+import ToastContainer from '../../components/ui/ToastContainer'
 ---
 <html>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Auction</title>
+    <title>Auction - Originals</title>
   </head>
-  <body>
-    <main class="min-h-screen bg-gray-50 p-4 dark:bg-gray-900">
-      <div class="mx-auto max-w-4xl space-y-6">
-        <header class="flex items-end justify-between gap-4">
-          <div>
-            <h1 class="text-2xl font-semibold">Auction</h1>
-            <p class="text-sm text-muted-foreground">View auction details and current price.</p>
-          </div>
-          <div class="flex gap-2">
-            <a href="/auctions" class="button button-secondary">Back to auctions</a>
-            <a href="/auctions/new" class="button">New auction</a>
-          </div>
-        </header>
+  <body class="min-h-screen bg-gray-50 dark:bg-gray-950">
+    <ToastProvider client:load>
+      <WalletProvider client:load>
+        <ToastContainer client:load />
+        <Header />
+        <main class="p-4">
+          <div class="mx-auto max-w-4xl space-y-6">
+            <header class="flex items-end justify-between gap-4">
+              <div>
+                <h1 class="text-2xl font-semibold">Auction</h1>
+                <p class="text-sm text-muted-foreground">View auction details and current price.</p>
+              </div>
+              <div class="flex gap-2">
+                <a href="/auctions" class="button button-secondary">Back to auctions</a>
+                <a href="/auctions/new" class="button">New auction</a>
+              </div>
+            </header>
 
-        <AuctionView client:only="react" />
-      </div>
-    </main>
+            <AuctionView client:only="react" />
+          </div>
+        </main>
+      </WalletProvider>
+    </ToastProvider>
   </body>
   </html>
 
