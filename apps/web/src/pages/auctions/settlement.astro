@@ -1,0 +1,68 @@
+---
+import '../../styles/globals.css'
+import React from 'react'
+---
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Settlement Dashboard - Auction Settlement</title>
+  </head>
+  <body>
+    <main class="min-h-screen bg-gray-50 p-4 dark:bg-gray-900">
+      <div class="mx-auto max-w-7xl space-y-6">
+        <header class="flex items-end justify-between gap-4">
+          <div>
+            <h1 class="text-3xl font-bold">Settlement Dashboard</h1>
+            <p class="text-sm text-muted-foreground mt-2">Monitor bids and execute settlement for clearing auctions.</p>
+          </div>
+          <div class="flex gap-2">
+            <a href="/auctions" class="button button-secondary">Back to auctions</a>
+          </div>
+        </header>
+
+        <div id="settlement-root"></div>
+      </div>
+    </main>
+
+    <script>
+      import React from 'react'
+      import { createRoot } from 'react-dom/client'
+      import SettlementDashboard from '../../components/auction/SettlementDashboard'
+
+      // Get auction ID from URL query parameter
+      const urlParams = new URLSearchParams(window.location.search)
+      const auctionId = urlParams.get('auctionId') || urlParams.get('id') || ''
+
+      const container = document.getElementById('settlement-root')
+      if (container) {
+        const root = createRoot(container)
+        
+        if (!auctionId) {
+          root.render(
+            React.createElement('div', {
+              className: 'rounded-lg border border-yellow-200 bg-yellow-50 p-6 shadow-sm dark:border-yellow-900 dark:bg-yellow-950'
+            },
+              React.createElement('h2', {
+                className: 'text-lg font-semibold text-yellow-900 dark:text-yellow-100'
+              }, 'No Auction Selected'),
+              React.createElement('p', {
+                className: 'mt-2 text-sm text-yellow-800 dark:text-yellow-200'
+              }, 'Please provide an auction ID via the ?auctionId= query parameter.'),
+              React.createElement('p', {
+                className: 'mt-4'
+              },
+                React.createElement('a', {
+                  href: '/auctions',
+                  className: 'button'
+                }, 'Go to Auctions')
+              )
+            )
+          )
+        } else {
+          root.render(React.createElement(SettlementDashboard, { auctionId }))
+        }
+      }
+    </script>
+  </body>
+</html>
