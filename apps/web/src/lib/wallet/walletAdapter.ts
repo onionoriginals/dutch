@@ -1,9 +1,11 @@
-// Bitcoin Wallet Adapter with Direct Wallet Integrations
-// No external dependencies - direct integration with Unisat and Xverse wallet APIs
-// Addresses network switching issues by ensuring network is set BEFORE fetching addresses
+// Bitcoin Wallet Adapter - Hybrid Approach
+// - Direct API for Unisat (better control over network switching)
+// - sats-connect for Xverse (implements the standard protocol)
+
+import { getAddress, type GetAddressOptions, type GetAddressResponse, type BitcoinNetworkType } from 'sats-connect'
 
 export type WalletProvider = 'unisat' | 'xverse'
-export type BitcoinNetworkType = 'Mainnet' | 'Testnet' | 'Signet'
+export type { BitcoinNetworkType }
 
 export interface WalletAddress {
   address: string
@@ -55,7 +57,7 @@ export function getAvailableWallets(): WalletProvider[] {
 }
 
 /**
- * Connect to Unisat wallet
+ * Connect to Unisat wallet using direct API
  * IMPORTANT: Network is switched BEFORE requesting accounts to ensure correct network addresses
  */
 async function connectUnisat(network: BitcoinNetworkType): Promise<Omit<ConnectedWallet, 'provider' | 'network'>> {
@@ -120,80 +122,60 @@ async function connectUnisat(network: BitcoinNetworkType): Promise<Omit<Connecte
 }
 
 /**
- * Connect to Xverse wallet
- * Uses Xverse's native getAddresses API with network enforcement
+ * Connect to Xverse wallet using sats-connect
+ * Xverse implements the sats-connect protocol, so we use it for reliability
  */
 async function connectXverse(network: BitcoinNetworkType): Promise<Omit<ConnectedWallet, 'provider' | 'network'>> {
-  const xverseProvider = (window as any).XverseProviders?.BitcoinProvider || (window as any).BitcoinProvider
-  
-  if (!xverseProvider) {
-    throw new Error('Xverse wallet not found. Please install the Xverse extension.')
-  }
-
   return new Promise((resolve, reject) => {
-    // Request addresses with explicit network parameter
-    // Xverse will enforce the network or prompt user to switch
-    xverseProvider
-      .request('getAddresses', {
+    const options: GetAddressOptions = {
+      payload: {
         purposes: ['payment', 'ordinals'],
         message: 'Connect your wallet to create and bid on auctions',
         network: {
           type: network,
         },
-      })
-      .then((response: any) => {
-        if (!response || !response.addresses) {
-          reject(new Error('Could not retrieve addresses from Xverse wallet'))
-          return
-        }
+      },
+      onFinish: (response: GetAddressResponse) => {
+        try {
+          const paymentAddress = response.addresses.find(
+            (addr) => addr.purpose === 'payment'
+          )
+          const ordinalsAddress = response.addresses.find(
+            (addr) => addr.purpose === 'ordinals'
+          )
 
-        const addresses = response.addresses
-        const paymentAddr = addresses.find((addr: any) => addr.purpose === 'payment')
-        const ordinalsAddr = addresses.find((addr: any) => addr.purpose === 'ordinals')
+          if (!paymentAddress || !ordinalsAddress) {
+            reject(new Error('Could not retrieve wallet addresses'))
+            return
+          }
 
-        if (!paymentAddr || !ordinalsAddr) {
-          reject(new Error('Could not find payment or ordinals address'))
-          return
-        }
-
-        // Verify that the returned addresses match the requested network
-        // This is a safety check to ensure network consistency
-        resolve({
-          addresses: [
-            {
-              address: paymentAddr.address,
-              publicKey: paymentAddr.publicKey,
-              purpose: 'payment',
-            },
-            {
-              address: ordinalsAddr.address,
-              publicKey: ordinalsAddr.publicKey,
-              purpose: 'ordinals',
-            },
-          ],
-          paymentAddress: paymentAddr.address,
-          paymentPublicKey: paymentAddr.publicKey,
-          ordinalsAddress: ordinalsAddr.address,
-          ordinalsPublicKey: ordinalsAddr.publicKey,
-        })
-      })
-      .catch((error: any) => {
-        if (
-          error?.message?.includes('User rejected') ||
-          error?.message?.includes('cancelled') ||
-          error?.code === 4001
-        ) {
-          reject(new Error('User cancelled wallet connection'))
-        } else {
+          resolve({
+            addresses: response.addresses.map((addr) => ({
+              address: addr.address,
+              publicKey: addr.publicKey,
+              purpose: addr.purpose as 'payment' | 'ordinals',
+            })),
+            paymentAddress: paymentAddress.address,
+            paymentPublicKey: paymentAddress.publicKey,
+            ordinalsAddress: ordinalsAddress.address,
+            ordinalsPublicKey: ordinalsAddress.publicKey,
+          })
+        } catch (error) {
           reject(error)
         }
-      })
+      },
+      onCancel: () => {
+        reject(new Error('User cancelled wallet connection'))
+      },
+    }
+
+    getAddress(options)
   })
 }
 
 /**
  * Connect to a Bitcoin wallet
- * Supports: Unisat, Xverse
+ * Supports: Unisat (direct API), Xverse (sats-connect protocol)
  * Network switching is handled properly for each wallet type
  */
 export async function connectWallet(
