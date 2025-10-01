@@ -21,6 +21,7 @@ export const DutchAuctionSchema = z.object({
   title: z.string().min(3, 'Title is too short'),
   description: z.string().max(500).optional().or(z.literal('')),
   inscriptionIds: z.string().min(1, 'At least one inscription ID is required'),
+  sellerAddress: z.string().min(10, 'Valid Bitcoin address is required').regex(/^(bc1|tb1|[13]|[mn2])[a-zA-HJ-NP-Z0-9]{25,90}$/, 'Invalid Bitcoin address format'),
   startPrice: z.number({ invalid_type_error: 'Start price is required' }).positive('Must be > 0'),
   endPrice: z.number({ invalid_type_error: 'End price is required' }).nonnegative('Must be >= 0'),
   decrementAmount: z.number({ invalid_type_error: 'Decrement amount is required' }).positive('Must be > 0'),
@@ -46,7 +47,7 @@ export const englishAuctionStepFields: string[][] = [
 
 export const dutchAuctionStepFields: string[][] = [
   ['title', 'description'],
-  ['inscriptionIds'],
+  ['inscriptionIds', 'sellerAddress'],
   ['startPrice', 'endPrice'],
   ['decrementAmount', 'decrementIntervalSeconds'],
   ['startTime', 'endTime']

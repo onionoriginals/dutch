@@ -115,13 +115,13 @@ export default function WalletButton({ className }: WalletButtonProps) {
                         : network === 'Signet'
                         ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'
                         : 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'
+
                     )}>
                       {network}
                     </span>
                   </div>
                 </div>
-
-                <div className="grid gap-2">
+                <div className="grid gap-2 text-sm">
                   <button
                     onClick={handleCopyAddress}
                     className="flex items-center justify-between rounded-2xl border border-border/60 bg-secondary/50 px-4 py-3 text-left text-foreground transition hover:border-primary/50 hover:bg-secondary/80"
@@ -131,7 +131,6 @@ export default function WalletButton({ className }: WalletButtonProps) {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                     </svg>
                   </button>
-
                   <button
                     onClick={() => {
                       setShowMenu(false)

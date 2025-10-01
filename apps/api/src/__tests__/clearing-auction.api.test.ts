@@ -163,7 +163,7 @@ describe('Clearing price auction API', () => {
 		expect(json.ok).toBe(true)
 		expect(json.data.status).toBe('payment_confirmed')
 
-		// Process settlement -> artifacts generated
+		// Process settlement -> PSBTs generated (new multi-step workflow)
 		res = await app.handle(
 			jsonRequest('http://localhost/api/clearing/process-settlement', 'POST', {
 				auctionId,
@@ -171,11 +171,30 @@ describe('Clearing price auction API', () => {
 		)
 		json = await res.json()
 		expect(json.ok).toBe(true)
-		expect(json.data.success).toBe(true)
-		expect(Array.isArray(json.data.artifacts)).toBe(true)
-		expect(json.data.artifacts.length).toBeGreaterThanOrEqual(1)
+		expect(json.data.auctionId).toBe(auctionId)
+		expect(json.data.clearingPrice).toBeGreaterThan(0)
+		expect(Array.isArray(json.data.psbts)).toBe(true)
+		expect(json.data.psbts.length).toBeGreaterThanOrEqual(1)
+		
+		// Verify PSBT structure
+		expect(json.data.psbts[0].bidId).toBeDefined()
+		expect(json.data.psbts[0].inscriptionId).toBeDefined()
+		expect(json.data.psbts[0].toAddress).toBeDefined()
+		expect(json.data.psbts[0].psbt).toBeDefined()
 
-		// Auction payments listing
+		// Mark bids as settled (simulating after signing & broadcasting)
+		res = await app.handle(
+			jsonRequest('http://localhost/api/clearing/mark-settled', 'POST', {
+				auctionId,
+				bidIds: [bidId],
+			}),
+		)
+		json = await res.json()
+		expect(json.ok).toBe(true)
+		expect(json.data.success).toBe(true)
+		expect(json.data.updated).toBe(1)
+
+		// Auction payments listing - verify bids are now settled
 		res = await app.handle(new Request(`http://localhost/api/clearing/auction-payments/${auctionId}`))
 		json = await res.json()
 		expect(json.ok).toBe(true)

@@ -1,28 +1,81 @@
 ---
+import Layout from '../layouts/Layout.astro'
 import React from 'react'
 import AuctionTypeSelectorDemo from '../components/auction/AuctionTypeSelectorDemo'
 import DutchEditorDemo from '../components/auction/DutchEditorDemo'
-
 ---
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Auction Components Demo</title>
-  </head>
-  <body>
-    <main style="padding: 24px; max-width: 920px; margin: 0 auto;">
-      <h1 style="font-size: 1.5rem; font-weight: 700;">Auction Components Demo</h1>
+<Layout title="Auction Components Demo - Originals">
+  <main class="pb-24 pt-16">
+    <div class="mx-auto max-w-5xl space-y-12 px-6">
+      <div class="space-y-4 text-center">
+        <p class="text-xs uppercase tracking-[0.3em] text-muted-foreground">Component showcase</p>
+        <h1 class="text-balance">Explore the building blocks behind Originals auctions</h1>
+        <p class="mx-auto max-w-2xl text-lg text-muted-foreground">
+          Rapidly prototype pricing flows, validate logic, and hand the polished experience directly to your engineering team. These interactive examples mirror what ships in production.
+        </p>
+      </div>
 
-      <section style="margin-top: 20px;">
-        <h2 style="font-size: 1.25rem; font-weight: 600;">Auction Type Selector</h2>
-        <AuctionTypeSelectorDemo client:load />
+      <section class="grid gap-10 lg:grid-cols-[1.05fr_1fr] lg:items-start">
+        <div class="card">
+          <div class="card-content space-y-6">
+            <div class="flex items-center justify-between">
+              <h2 class="text-xl">Auction type selector</h2>
+              <span class="badge">Guided pattern</span>
+            </div>
+            <p class="text-sm text-muted-foreground">
+              Orient collectors instantly with contextual copy and interactive previews for Dutch, English, or fixed-price drops.
+            </p>
+            <AuctionTypeSelectorDemo client:load />
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-content space-y-4">
+            <div class="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/15 text-primary">
+              <svg class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <h3 class="text-xl">What this pattern solves</h3>
+            <ul class="space-y-3 text-sm text-muted-foreground">
+              <li>• Educates collectors on mechanics before they commit.</li>
+              <li>• Handles allowlists and bidding eligibility inside one surface.</li>
+              <li>• Provides responsive previews for mobile, tablet, and display.</li>
+            </ul>
+            <a href="/docs/auction-type" class="btn btn-secondary w-full justify-center">Read the experience spec</a>
+          </div>
+        </div>
       </section>
 
-      <section style="margin-top: 28px;">
-        <h2 style="font-size: 1.25rem; font-weight: 600;">Dutch Price Schedule Editor</h2>
-        <DutchEditorDemo client:load />
+      <section class="grid gap-10 lg:grid-cols-[1fr_1.1fr] lg:items-start">
+        <div class="card order-2 lg:order-1">
+          <div class="card-content space-y-6">
+            <div class="flex items-center justify-between">
+              <h2 class="text-xl">Dutch price schedule editor</h2>
+              <span class="badge">Live validation</span>
+            </div>
+            <p class="text-sm text-muted-foreground">
+              Model every price decay, preview revenue projections, and publish a schedule that keeps collectors confident during rapid drops.
+            </p>
+            <DutchEditorDemo client:load />
+          </div>
+        </div>
+        <div class="card order-1 lg:order-2">
+          <div class="card-content space-y-4">
+            <div class="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/15 text-primary">
+              <svg class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v8m4-4H8" />
+              </svg>
+            </div>
+            <h3 class="text-xl">Use it to</h3>
+            <ul class="space-y-3 text-sm text-muted-foreground">
+              <li>• Align financial stakeholders with plain-language guardrails.</li>
+              <li>• Export schedules to finance, ops, and community updates.</li>
+              <li>• Trigger automated reminders as the schedule progresses.</li>
+            </ul>
+            <a href="/auctions/new" class="btn btn-primary w-full justify-center">Open the full studio</a>
+          </div>
+        </div>
       </section>
-    </main>
-  </body>
-</html>
+    </div>
+  </main>
+</Layout>
