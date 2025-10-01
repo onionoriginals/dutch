@@ -90,7 +90,10 @@ export class PostgresDutchyDatabase {
   private inscriptionEscrows: Map<string, { inscriptionId: string; status: string; details?: any; updatedAt: number }> = new Map()
 
   constructor(public connectionString: string, mempoolClient?: MempoolClientLike) {
-    this.sql = postgres(connectionString, { max: 5 })
+    this.sql = postgres(connectionString, { 
+      max: 5,
+      onnotice: () => {} // Suppress NOTICE messages (e.g., "relation already exists, skipping")
+    })
     this.mempoolClient = mempoolClient
   }
 
