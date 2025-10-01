@@ -1,5 +1,6 @@
 import React from 'react'
-import { useToast, type Toast } from '../../lib/toast/ToastContext'
+import { useToast } from '../../lib/stores/toast.react'
+import type { Toast } from '../../lib/stores/toast'
 
 export default function ToastContainer() {
   const { toasts, hideToast } = useToast()

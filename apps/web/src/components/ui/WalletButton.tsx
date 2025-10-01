@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
-import { useWallet } from '../../lib/wallet/WalletContext'
+import { useWallet } from '../../lib/stores/wallet.react'
 import { formatAddress, type WalletProvider } from '../../lib/wallet/walletAdapter'
-import { useToast } from '../../lib/toast/ToastContext'
+import { useToast } from '../../lib/stores/toast.react'
 
 export default function WalletButton() {
   const {

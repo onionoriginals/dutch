@@ -7,7 +7,7 @@ import { DateTimePicker } from '../inputs/DateTimePicker'
 import { DutchAuctionSchema, dutchAuctionStepFields } from '../../lib/validation/auction'
 import { normalizeDutch } from '../../utils/normalizeAuction'
 import { btcToSats, formatSats, btcToUsd, formatCurrency, getBtcUsdRate } from '../../utils/currency'
-import { useWallet } from '../../lib/wallet/WalletContext'
+import { useWallet } from '../../lib/stores/wallet.react'
 
 type DraftShape = {
   values: any
