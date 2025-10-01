@@ -1,6 +1,5 @@
-// Laser Eyes Bitcoin Wallet Adapter
-// This module provides a compatibility layer that wraps Laser Eyes functionality
-// to maintain the existing API surface while using Laser Eyes under the hood
+// Bitcoin Wallet Adapter using native wallet APIs
+// This adapter provides direct integration with Bitcoin wallet browser extensions
 
 export type WalletProvider = 'unisat' | 'leather' | 'xverse'
 export type BitcoinNetworkType = 'Mainnet' | 'Testnet' | 'Signet'
@@ -59,94 +58,89 @@ export function getAvailableWallets(): WalletProvider[] {
 }
 
 /**
- * Map our provider names to Laser Eyes wallet types
+ * Connect to Unisat wallet
  */
-function getWalletType(provider: WalletProvider): string {
-  const walletMap: Record<WalletProvider, string> = {
-    unisat: 'unisat',
-    leather: 'leather',
-    xverse: 'xverse',
+async function connectUnisat(network: BitcoinNetworkType): Promise<Omit<ConnectedWallet, 'provider' | 'network'>> {
+  const unisat = (window as any).unisat
+  if (!unisat) {
+    throw new Error('Unisat wallet not found. Please install the Unisat extension.')
   }
-  return walletMap[provider]
-}
 
-/**
- * Get the Laser Eyes instance from window
- * Laser Eyes attaches itself to window when the provider is set up
- */
-function getLaserEyesInstance(): any {
-  if (typeof window === 'undefined') return null
+  // Request accounts
+  const accounts = await unisat.requestAccounts()
+  if (!accounts || accounts.length === 0) {
+    throw new Error('No accounts found in Unisat wallet')
+  }
+
+  // Get public key
+  const pubKey = await unisat.getPublicKey()
   
-  // Laser Eyes typically exposes its methods through a global context
-  // We'll need to access the wallet providers directly
-  return (window as any).__laserEyesContext
+  // Switch network if needed
+  const networkMap: Record<BitcoinNetworkType, string> = {
+    'Mainnet': 'livenet',
+    'Testnet': 'testnet',
+    'Signet': 'signet',
+  }
+  await unisat.switchNetwork(networkMap[network])
+
+  const paymentAddress = accounts[0]
+  const paymentPublicKey = pubKey
+  const ordinalsAddress = accounts[0] // Unisat uses same address for both
+  const ordinalsPublicKey = pubKey
+
+  return {
+    addresses: [
+      {
+        address: paymentAddress,
+        publicKey: paymentPublicKey,
+        purpose: 'payment',
+      },
+      {
+        address: ordinalsAddress,
+        publicKey: ordinalsPublicKey,
+        purpose: 'ordinals',
+      },
+    ],
+    paymentAddress,
+    paymentPublicKey,
+    ordinalsAddress,
+    ordinalsPublicKey,
+  }
 }
 
 /**
- * Connect to a Bitcoin wallet using direct wallet provider APIs
- * This mimics what Laser Eyes does internally but gives us more control
+ * Connect to Xverse wallet using sats-connect pattern
  */
-export async function connectWallet(
-  provider: WalletProvider,
-  network: BitcoinNetworkType = 'Testnet'
-): Promise<ConnectedWallet> {
-  if (typeof window === 'undefined') {
-    throw new Error('Wallet connection is only available in browser environment')
-  }
+async function connectXverse(network: BitcoinNetworkType): Promise<Omit<ConnectedWallet, 'provider' | 'network'>> {
+  // Xverse requires using a connection pattern similar to sats-connect
+  // The wallet requires the request to come through a specific API
+  
+  return new Promise((resolve, reject) => {
+    const xverseProvider = (window as any).XverseProviders?.BitcoinProvider || (window as any).BitcoinProvider
+    
+    if (!xverseProvider) {
+      reject(new Error('Xverse wallet not found. Please install the Xverse extension.'))
+      return
+    }
 
-  try {
-    const walletType = getWalletType(provider)
-    let paymentAddress = ''
-    let paymentPublicKey = ''
-    let ordinalsAddress = ''
-    let ordinalsPublicKey = ''
+    // Xverse uses a request-based API similar to sats-connect
+    const request = {
+      getAddresses: {
+        purposes: ['payment', 'ordinals'] as const,
+        message: 'Connect your wallet to create and bid on auctions',
+        network: {
+          type: network,
+        },
+      },
+    }
 
-    // Connect directly to wallet providers
-    switch (provider) {
-      case 'unisat': {
-        const unisat = (window as any).unisat
-        if (!unisat) {
-          throw new Error('Unisat wallet not found. Please install the Unisat extension.')
-        }
-
-        // Request accounts
-        const accounts = await unisat.requestAccounts()
-        if (!accounts || accounts.length === 0) {
-          throw new Error('No accounts found in Unisat wallet')
-        }
-
-        // Get public key
-        const pubKey = await unisat.getPublicKey()
-        
-        paymentAddress = accounts[0]
-        paymentPublicKey = pubKey
-        ordinalsAddress = accounts[0] // Unisat uses same address for both
-        ordinalsPublicKey = pubKey
-        
-        // Switch network if needed
-        const networkMap: Record<BitcoinNetworkType, string> = {
-          'Mainnet': 'livenet',
-          'Testnet': 'testnet',
-          'Signet': 'signet',
-        }
-        await unisat.switchNetwork(networkMap[network])
-        break
-      }
-
-      case 'xverse': {
-        const xverse = (window as any).XverseProviders?.BitcoinProvider || (window as any).BitcoinProvider
-        if (!xverse) {
-          throw new Error('Xverse wallet not found. Please install the Xverse extension.')
-        }
-
-        // Request addresses using Xverse's getAddresses method
-        const response = await xverse.request('getAddresses', {
-          purposes: ['payment', 'ordinals'],
-          message: 'Connect your wallet to create and bid on auctions',
-        })
-
+    // Call the wallet
+    xverseProvider
+      .request('getAddresses', request.getAddresses)
+      .then((response: any) => {
         if (!response || !response.addresses) {
-          throw new Error('Could not retrieve addresses from Xverse wallet')
+          reject(new Error('Could not retrieve addresses from Xverse wallet'))
+          return
         }
 
         const addresses = response.addresses
@@ -154,29 +148,60 @@ export async function connectWallet(
         const ordinalsAddr = addresses.find((addr: any) => addr.purpose === 'ordinals')
 
         if (!paymentAddr || !ordinalsAddr) {
-          throw new Error('Could not find payment or ordinals address')
+          reject(new Error('Could not find payment or ordinals address'))
+          return
         }
 
-        paymentAddress = paymentAddr.address
-        paymentPublicKey = paymentAddr.publicKey
-        ordinalsAddress = ordinalsAddr.address
-        ordinalsPublicKey = ordinalsAddr.publicKey
-        break
-      }
-
-      case 'leather': {
-        const leather = (window as any).LeatherProvider || (window as any).HiroWalletProvider
-        if (!leather) {
-          throw new Error('Leather wallet not found. Please install the Leather extension.')
-        }
-
-        // Request addresses using Leather's API
-        const response = await leather.request('getAddresses', {
-          message: 'Connect your wallet to create and bid on auctions',
+        resolve({
+          addresses: [
+            {
+              address: paymentAddr.address,
+              publicKey: paymentAddr.publicKey,
+              purpose: 'payment',
+            },
+            {
+              address: ordinalsAddr.address,
+              publicKey: ordinalsAddr.publicKey,
+              purpose: 'ordinals',
+            },
+          ],
+          paymentAddress: paymentAddr.address,
+          paymentPublicKey: paymentAddr.publicKey,
+          ordinalsAddress: ordinalsAddr.address,
+          ordinalsPublicKey: ordinalsAddr.publicKey,
         })
+      })
+      .catch((error: any) => {
+        if (error && error.message && error.message.includes('User rejected')) {
+          reject(new Error('User cancelled wallet connection'))
+        } else {
+          reject(error)
+        }
+      })
+  })
+}
 
+/**
+ * Connect to Leather wallet
+ */
+async function connectLeather(network: BitcoinNetworkType): Promise<Omit<ConnectedWallet, 'provider' | 'network'>> {
+  return new Promise((resolve, reject) => {
+    const leather = (window as any).LeatherProvider || (window as any).HiroWalletProvider
+    
+    if (!leather) {
+      reject(new Error('Leather wallet not found. Please install the Leather extension.'))
+      return
+    }
+
+    // Request addresses using Leather's API
+    leather
+      .request('getAddresses', {
+        message: 'Connect your wallet to create and bid on auctions',
+      })
+      .then((response: any) => {
         if (!response || !response.result || !response.result.addresses) {
-          throw new Error('Could not retrieve addresses from Leather wallet')
+          reject(new Error('Could not retrieve addresses from Leather wallet'))
+          return
         }
 
         const addresses = response.result.addresses
@@ -188,42 +213,75 @@ export async function connectWallet(
         ) || paymentAddr
 
         if (!paymentAddr) {
-          throw new Error('Could not find payment address')
+          reject(new Error('Could not find payment address'))
+          return
         }
 
-        paymentAddress = paymentAddr.address
-        paymentPublicKey = paymentAddr.publicKey || ''
-        ordinalsAddress = ordinalsAddr?.address || paymentAddr.address
-        ordinalsPublicKey = ordinalsAddr?.publicKey || paymentAddr.publicKey || ''
+        resolve({
+          addresses: [
+            {
+              address: paymentAddr.address,
+              publicKey: paymentAddr.publicKey || '',
+              purpose: 'payment',
+            },
+            {
+              address: ordinalsAddr?.address || paymentAddr.address,
+              publicKey: ordinalsAddr?.publicKey || paymentAddr.publicKey || '',
+              purpose: 'ordinals',
+            },
+          ],
+          paymentAddress: paymentAddr.address,
+          paymentPublicKey: paymentAddr.publicKey || '',
+          ordinalsAddress: ordinalsAddr?.address || paymentAddr.address,
+          ordinalsPublicKey: ordinalsAddr?.publicKey || paymentAddr.publicKey || '',
+        })
+      })
+      .catch((error: any) => {
+        if (error && error.message && error.message.includes('User rejected')) {
+          reject(new Error('User cancelled wallet connection'))
+        } else {
+          reject(error)
+        }
+      })
+  })
+}
+
+/**
+ * Connect to a Bitcoin wallet
+ */
+export async function connectWallet(
+  provider: WalletProvider,
+  network: BitcoinNetworkType = 'Testnet'
+): Promise<ConnectedWallet> {
+  if (typeof window === 'undefined') {
+    throw new Error('Wallet connection is only available in browser environment')
+  }
+
+  try {
+    let walletData: Omit<ConnectedWallet, 'provider' | 'network'>
+
+    switch (provider) {
+      case 'unisat':
+        walletData = await connectUnisat(network)
         break
-      }
+
+      case 'xverse':
+        walletData = await connectXverse(network)
+        break
+
+      case 'leather':
+        walletData = await connectLeather(network)
+        break
 
       default:
         throw new Error(`Unsupported wallet provider: ${provider}`)
     }
 
-    const wallet: ConnectedWallet = {
-      addresses: [
-        {
-          address: paymentAddress,
-          publicKey: paymentPublicKey,
-          purpose: 'payment',
-        },
-        {
-          address: ordinalsAddress,
-          publicKey: ordinalsPublicKey,
-          purpose: 'ordinals',
-        },
-      ],
-      paymentAddress,
-      paymentPublicKey,
-      ordinalsAddress,
-      ordinalsPublicKey,
+    return {
+      ...walletData,
       provider,
       network,
     }
-
-    return wallet
   } catch (error) {
     console.error('Wallet connection error:', error)
     throw new Error(
