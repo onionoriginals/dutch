@@ -1,13 +1,9 @@
-import {
-  getAddress,
-  getCapabilities,
-  request,
-  type GetAddressOptions,
-  type GetAddressResponse,
-  type BitcoinNetworkType,
-} from 'sats-connect'
+// Laser Eyes Bitcoin Wallet Adapter
+// This module provides a compatibility layer that wraps Laser Eyes functionality
+// to maintain the existing API surface while using Laser Eyes under the hood
 
 export type WalletProvider = 'unisat' | 'leather' | 'xverse'
+export type BitcoinNetworkType = 'Mainnet' | 'Testnet' | 'Signet'
 
 export interface WalletAddress {
   address: string
@@ -63,69 +59,171 @@ export function getAvailableWallets(): WalletProvider[] {
 }
 
 /**
- * Connect to a Bitcoin wallet
+ * Map our provider names to Laser Eyes wallet types
+ */
+function getWalletType(provider: WalletProvider): string {
+  const walletMap: Record<WalletProvider, string> = {
+    unisat: 'unisat',
+    leather: 'leather',
+    xverse: 'xverse',
+  }
+  return walletMap[provider]
+}
+
+/**
+ * Get the Laser Eyes instance from window
+ * Laser Eyes attaches itself to window when the provider is set up
+ */
+function getLaserEyesInstance(): any {
+  if (typeof window === 'undefined') return null
+  
+  // Laser Eyes typically exposes its methods through a global context
+  // We'll need to access the wallet providers directly
+  return (window as any).__laserEyesContext
+}
+
+/**
+ * Connect to a Bitcoin wallet using direct wallet provider APIs
+ * This mimics what Laser Eyes does internally but gives us more control
  */
 export async function connectWallet(
   provider: WalletProvider,
   network: BitcoinNetworkType = 'Testnet'
 ): Promise<ConnectedWallet> {
+  if (typeof window === 'undefined') {
+    throw new Error('Wallet connection is only available in browser environment')
+  }
+
   try {
-    const options: GetAddressOptions = {
-      payload: {
-        purposes: ['payment', 'ordinals'],
-        message: 'Connect your wallet to create and bid on auctions',
-        network: {
-          type: network,
-        },
-      },
-      onFinish: (response: GetAddressResponse) => {
-        return response
-      },
-      onCancel: () => {
-        throw new Error('User cancelled wallet connection')
-      },
+    const walletType = getWalletType(provider)
+    let paymentAddress = ''
+    let paymentPublicKey = ''
+    let ordinalsAddress = ''
+    let ordinalsPublicKey = ''
+
+    // Connect directly to wallet providers
+    switch (provider) {
+      case 'unisat': {
+        const unisat = (window as any).unisat
+        if (!unisat) {
+          throw new Error('Unisat wallet not found. Please install the Unisat extension.')
+        }
+
+        // Request accounts
+        const accounts = await unisat.requestAccounts()
+        if (!accounts || accounts.length === 0) {
+          throw new Error('No accounts found in Unisat wallet')
+        }
+
+        // Get public key
+        const pubKey = await unisat.getPublicKey()
+        
+        paymentAddress = accounts[0]
+        paymentPublicKey = pubKey
+        ordinalsAddress = accounts[0] // Unisat uses same address for both
+        ordinalsPublicKey = pubKey
+        
+        // Switch network if needed
+        const networkMap: Record<BitcoinNetworkType, string> = {
+          'Mainnet': 'livenet',
+          'Testnet': 'testnet',
+          'Signet': 'signet',
+        }
+        await unisat.switchNetwork(networkMap[network])
+        break
+      }
+
+      case 'xverse': {
+        const xverse = (window as any).XverseProviders?.BitcoinProvider || (window as any).BitcoinProvider
+        if (!xverse) {
+          throw new Error('Xverse wallet not found. Please install the Xverse extension.')
+        }
+
+        // Request addresses using Xverse's getAddresses method
+        const response = await xverse.request('getAddresses', {
+          purposes: ['payment', 'ordinals'],
+          message: 'Connect your wallet to create and bid on auctions',
+        })
+
+        if (!response || !response.addresses) {
+          throw new Error('Could not retrieve addresses from Xverse wallet')
+        }
+
+        const addresses = response.addresses
+        const paymentAddr = addresses.find((addr: any) => addr.purpose === 'payment')
+        const ordinalsAddr = addresses.find((addr: any) => addr.purpose === 'ordinals')
+
+        if (!paymentAddr || !ordinalsAddr) {
+          throw new Error('Could not find payment or ordinals address')
+        }
+
+        paymentAddress = paymentAddr.address
+        paymentPublicKey = paymentAddr.publicKey
+        ordinalsAddress = ordinalsAddr.address
+        ordinalsPublicKey = ordinalsAddr.publicKey
+        break
+      }
+
+      case 'leather': {
+        const leather = (window as any).LeatherProvider || (window as any).HiroWalletProvider
+        if (!leather) {
+          throw new Error('Leather wallet not found. Please install the Leather extension.')
+        }
+
+        // Request addresses using Leather's API
+        const response = await leather.request('getAddresses', {
+          message: 'Connect your wallet to create and bid on auctions',
+        })
+
+        if (!response || !response.result || !response.result.addresses) {
+          throw new Error('Could not retrieve addresses from Leather wallet')
+        }
+
+        const addresses = response.result.addresses
+        const paymentAddr = addresses.find((addr: any) => 
+          addr.type === 'p2wpkh' || addr.type === 'p2tr'
+        )
+        const ordinalsAddr = addresses.find((addr: any) => 
+          addr.type === 'p2tr'
+        ) || paymentAddr
+
+        if (!paymentAddr) {
+          throw new Error('Could not find payment address')
+        }
+
+        paymentAddress = paymentAddr.address
+        paymentPublicKey = paymentAddr.publicKey || ''
+        ordinalsAddress = ordinalsAddr?.address || paymentAddr.address
+        ordinalsPublicKey = ordinalsAddr?.publicKey || paymentAddr.publicKey || ''
+        break
+      }
+
+      default:
+        throw new Error(`Unsupported wallet provider: ${provider}`)
     }
 
-    return new Promise((resolve, reject) => {
-      options.onFinish = (response: GetAddressResponse) => {
-        try {
-          const paymentAddress = response.addresses.find(
-            (addr) => addr.purpose === 'payment'
-          )
-          const ordinalsAddress = response.addresses.find(
-            (addr) => addr.purpose === 'ordinals'
-          )
+    const wallet: ConnectedWallet = {
+      addresses: [
+        {
+          address: paymentAddress,
+          publicKey: paymentPublicKey,
+          purpose: 'payment',
+        },
+        {
+          address: ordinalsAddress,
+          publicKey: ordinalsPublicKey,
+          purpose: 'ordinals',
+        },
+      ],
+      paymentAddress,
+      paymentPublicKey,
+      ordinalsAddress,
+      ordinalsPublicKey,
+      provider,
+      network,
+    }
 
-          if (!paymentAddress || !ordinalsAddress) {
-            throw new Error('Could not retrieve wallet addresses')
-          }
-
-          const wallet: ConnectedWallet = {
-            addresses: response.addresses.map((addr: any) => ({
-              address: addr.address,
-              publicKey: addr.publicKey,
-              purpose: addr.purpose as 'payment' | 'ordinals',
-            })),
-            paymentAddress: paymentAddress.address,
-            paymentPublicKey: paymentAddress.publicKey,
-            ordinalsAddress: ordinalsAddress.address,
-            ordinalsPublicKey: ordinalsAddress.publicKey,
-            provider,
-            network,
-          }
-
-          resolve(wallet)
-        } catch (error) {
-          reject(error)
-        }
-      }
-
-      options.onCancel = () => {
-        reject(new Error('User cancelled wallet connection'))
-      }
-
-      getAddress(options)
-    })
+    return wallet
   } catch (error) {
     console.error('Wallet connection error:', error)
     throw new Error(

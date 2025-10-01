@@ -1,7 +1,6 @@
 import { useStore } from '@nanostores/react'
 import { useEffect } from 'react'
-import type { BitcoinNetworkType } from 'sats-connect'
-import type { WalletProvider } from '../wallet/walletAdapter'
+import type { WalletProvider, BitcoinNetworkType } from '../wallet/walletAdapter'
 import {
   walletStore,
   $wallet,

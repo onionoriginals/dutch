@@ -1,6 +1,5 @@
 import { describe, test, expect, beforeEach, mock } from 'bun:test'
-import type { ConnectedWallet, WalletProvider } from '../wallet/walletAdapter'
-import type { BitcoinNetworkType } from 'sats-connect'
+import type { ConnectedWallet, WalletProvider, BitcoinNetworkType } from '../wallet/walletAdapter'
 
 // Mock the walletAdapter module
 const mockConnectedWallet: ConnectedWallet = {
