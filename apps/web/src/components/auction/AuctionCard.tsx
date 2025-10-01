@@ -2,6 +2,8 @@ import React from 'react'
 import type { AuctionType } from '../../types/auction'
 import { formatCurrency } from '../../utils/currency'
 import { DateTime } from 'luxon'
+import type { ScheduleInput } from '@originals/dutch/browser'
+import LivePriceDisplay from './LivePriceDisplay'
 
 export type AuctionCardProps = {
   id: string
@@ -17,6 +19,7 @@ export type AuctionCardProps = {
   reservePrice?: number
   reserveMet?: boolean
   onQuickAction?: (id: string, action: 'view' | 'edit' | 'cancel' | 'share') => void
+  scheduleInput?: ScheduleInput // For Dutch auctions with live pricing
 }
 
 export default function AuctionCard(props: AuctionCardProps) {
@@ -33,7 +36,8 @@ export default function AuctionCard(props: AuctionCardProps) {
     numBids,
     reservePrice,
     reserveMet,
-    onQuickAction
+    onQuickAction,
+    scheduleInput
   } = props
 
   const now = Date.now()
@@ -87,7 +91,21 @@ export default function AuctionCard(props: AuctionCardProps) {
 
         <div className="grid gap-4 rounded-2xl border border-border/60 bg-secondary/60 p-4 text-sm text-muted-foreground">
           <div className="flex items-center justify-between text-base text-foreground">
-            <span className="font-semibold">{priceLabel}</span>
+            {/* Use live price display for Dutch auctions with schedule data, otherwise show static price */}
+            {type === 'dutch' && scheduleInput && isLive ? (
+              <LivePriceDisplay
+                scheduleInput={scheduleInput}
+                startTime={startTime}
+                endTime={endTime}
+                status={status}
+                currency={currency}
+                compact={true}
+                showSparkline={false}
+                showCountdown={true}
+              />
+            ) : (
+              <span className="font-semibold">{priceLabel}</span>
+            )}
             {typeof numBids === 'number' && (
               <span className="text-sm font-medium text-muted-foreground">{numBids} bids</span>
             )}

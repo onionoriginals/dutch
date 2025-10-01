@@ -1,7 +1,9 @@
 import React from 'react'
 import AuctionCard from '../../components/auction/AuctionCard'
+import LivePriceDisplay from '../../components/auction/LivePriceDisplay'
 import BiddingInterface from '../../components/auction/BiddingInterface'
 import { fetchAuction } from '../../lib/auctions/apiAdapter'
+import type { ScheduleInput } from '@originals/dutch/browser'
 
 type ClearingAuction = {
   id: string
@@ -103,6 +105,59 @@ export default function AuctionView() {
       </section>
     )
   }
+
+  // Extract schedule parameters for Dutch auctions
+  const scheduleInput = React.useMemo((): ScheduleInput | null => {
+    if (data.auction.type !== 'dutch' || !data.rawAuction) return null
+    
+    const raw = data.rawAuction
+    const startPrice = raw.start_price ?? raw.current_price ?? 0
+    const floorPrice = raw.min_price ?? 0
+    const durationSeconds = raw.duration ?? 3600
+    const intervalSeconds = raw.decrement_interval ?? 60
+
+    // Validate we have the minimum required data
+    if (startPrice <= 0 || startPrice <= floorPrice) return null
+
+    return {
+      startPrice,
+      floorPrice,
+      durationSeconds,
+      intervalSeconds,
+      decayType: 'linear', // Default to linear for now
+    }
+  }, [data])
+
+  return (
+    <section className="rounded-lg border bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-800">
+      <AuctionCard
+        id={data.auction.id}
+        title={data.auction.title}
+        type={data.auction.type}
+        status={data.auction.status}
+        startTime={data.auction.startTime}
+        endTime={data.auction.endTime}
+        currency={data.auction.currency}
+        currentPrice={data.auction.currentPrice}
+      />
+      
+      {/* Live Price Display for Dutch Auctions */}
+      {scheduleInput && data.auction.type === 'dutch' && (
+        <div className="mt-6 rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900">
+          <h3 className="mb-3 text-lg font-semibold">Live Price Tracker</h3>
+          <LivePriceDisplay
+            scheduleInput={scheduleInput}
+            startTime={data.auction.startTime}
+            endTime={data.auction.endTime}
+            status={data.auction.status}
+            currency={data.auction.currency}
+            showSparkline={true}
+            showCountdown={true}
+            compact={false}
+          />
+        </div>
+      )}
+    </section>
 
   const isClearingAuction = clearingData?.auction_type === 'clearing'
   const isActive = data.auction.status === 'live'
