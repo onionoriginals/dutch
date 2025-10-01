@@ -3,8 +3,10 @@
  * 
  * Automatically monitors and updates auction statuses:
  * - Expires auctions past their end_time
- * - Checks mempool for pending payment confirmations
- * - Updates bid payment statuses
+ * - Polls mempool API to detect payments to escrow addresses
+ * - Extracts transaction IDs from detected payments
+ * - Confirms bid payments once transactions are detected
+ * - Updates bid payment statuses from payment_pending to payment_confirmed
  * - Logs all status changes for audit trail
  */
 
@@ -183,40 +185,74 @@ export class AuctionMonitor {
 
       for (const payment of pendingPayments) {
         try {
-          // Check if payment has escrow address (for clearing auctions)
+          // Check if payment has escrow address but no transaction ID yet
           if (payment.escrowAddress && !payment.transactionId) {
-            // Poll mempool API to check if address has received payment
-            const hasPayment = await this.checkAddressForPayment(payment.escrowAddress)
+            // Poll mempool API to get the transaction paying to this address
+            const txInfo = await this.getAddressPaymentTransaction(payment.escrowAddress, payment.bidAmount)
             
-            if (hasPayment) {
-              logger.info('Payment detected for bid', {
+            if (txInfo) {
+              // Found a transaction to the escrow address
+              logger.info('Payment transaction detected for bid', {
                 bidId: payment.id,
                 escrowAddress: payment.escrowAddress,
+                transactionId: txInfo.txid,
+                amount: txInfo.amount,
                 operation: 'payment-detected',
               })
-              // Note: In a real implementation, we would extract the actual txId
-              // For now, we just mark that payment was detected
+              
+              // Confirm the payment with the extracted transaction ID
+              try {
+                const updateResult = this.database.confirmBidPayment(
+                  payment.id,
+                  txInfo.txid
+                )
+                
+                if (updateResult?.success) {
+                  confirmedCount++
+                  logger.info('Payment confirmed', {
+                    bidId: payment.id,
+                    transactionId: txInfo.txid,
+                    operation: 'payment-confirmed',
+                  })
+                }
+              } catch (confirmError: any) {
+                logger.error('Failed to confirm payment', {
+                  bidId: payment.id,
+                  transactionId: txInfo.txid,
+                  error: confirmError.message,
+                })
+                errorCount++
+              }
             }
           }
 
-          // If we have a transactionId, check if it's confirmed
-          if (payment.transactionId) {
+          // If we already have a transactionId, just check if it's confirmed
+          else if (payment.transactionId) {
             const isConfirmed = await this.checkTransactionConfirmation(payment.transactionId)
             
             if (isConfirmed) {
-              // Update bid status to payment_confirmed
-              const updateResult = this.database.confirmBidPayment(
-                payment.id,
-                payment.transactionId
-              )
-              
-              if (updateResult?.success) {
-                confirmedCount++
-                logger.info('Payment confirmed', {
+              // Transaction already has confirmations, ensure it's marked as confirmed
+              try {
+                const updateResult = this.database.confirmBidPayment(
+                  payment.id,
+                  payment.transactionId
+                )
+                
+                if (updateResult?.success && !updateResult.alreadyConfirmed) {
+                  confirmedCount++
+                  logger.info('Payment confirmed', {
+                    bidId: payment.id,
+                    transactionId: payment.transactionId,
+                    operation: 'payment-confirmed',
+                  })
+                }
+              } catch (confirmError: any) {
+                logger.error('Failed to confirm payment', {
                   bidId: payment.id,
                   transactionId: payment.transactionId,
-                  operation: 'payment-confirmed',
+                  error: confirmError.message,
                 })
+                errorCount++
               }
             }
           }
@@ -248,32 +284,91 @@ export class AuctionMonitor {
   }
 
   /**
-   * Check if an address has received any payment
+   * Get the transaction that paid to an address
+   * Returns the txid and amount if a valid payment is found
    */
-  private async checkAddressForPayment(address: string): Promise<boolean> {
+  private async getAddressPaymentTransaction(
+    address: string,
+    expectedAmount: number
+  ): Promise<{ txid: string; amount: number } | null> {
     try {
       const apiBase = this.getMempoolApiBase()
       const url = `${apiBase}/address/${address}/txs`
       
       const response = await fetch(url)
       if (!response.ok) {
-        logger.warn('Failed to check address', {
+        logger.warn('Failed to check address for transactions', {
           address,
           status: response.status,
           statusText: response.statusText,
         })
-        return false
+        return null
       }
 
       const txs = await response.json() as any[]
-      // Check if address has received any transactions
-      return Array.isArray(txs) && txs.length > 0
+      
+      if (!Array.isArray(txs) || txs.length === 0) {
+        return null
+      }
+
+      // Find the first transaction that pays to this address
+      // We look for outputs (vout) that match the escrow address
+      for (const tx of txs) {
+        if (!tx.vout || !Array.isArray(tx.vout)) continue
+        
+        for (const vout of tx.vout) {
+          // Check if this output pays to our escrow address
+          if (vout.scriptpubkey_address === address) {
+            const amountSats = vout.value
+            
+            // Log the transaction details
+            logger.debug('Found payment to escrow address', {
+              address,
+              txid: tx.txid,
+              amount: amountSats,
+              expectedAmount,
+              vout: vout.n,
+            })
+            
+            // Verify amount matches (with some tolerance for fees)
+            // Allow up to 10% variance to account for fee estimation differences
+            const tolerance = expectedAmount * 0.1
+            const amountMatch = Math.abs(amountSats - expectedAmount) <= tolerance
+            
+            if (!amountMatch) {
+              logger.warn('Payment amount mismatch', {
+                address,
+                txid: tx.txid,
+                expected: expectedAmount,
+                received: amountSats,
+                difference: amountSats - expectedAmount,
+              })
+              // Continue looking for a better match
+              continue
+            }
+            
+            // Found a matching payment
+            return {
+              txid: tx.txid,
+              amount: amountSats,
+            }
+          }
+        }
+      }
+
+      // No matching payment found
+      logger.debug('No matching payment found for address', {
+        address,
+        expectedAmount,
+        txCount: txs.length,
+      })
+      return null
     } catch (error: any) {
-      logger.error('Error checking address for payment', {
+      logger.error('Error getting address payment transaction', {
         address,
         error: error.message,
       })
-      return false
+      return null
     }
   }
 
