@@ -147,26 +147,30 @@ export default function SettlementDashboard({ auctionId }: SettlementDashboardPr
       
       // Store signed PSBT
       const signedPsbt = signed || `signed_${psbt.psbt}`
-      setSignedPsbts(prev => new Map(prev).set(index, signedPsbt))
+      const updatedSignedPsbts = new Map(signedPsbts).set(index, signedPsbt)
+      setSignedPsbts(updatedSignedPsbts)
       
       // Move to next PSBT or broadcasting step
       if (index + 1 < psbts.length) {
         setCurrentPsbtIndex(index + 1)
       } else {
         setSettlementStep('broadcasting')
-        await broadcastAllPsbts()
+        // Pass the updated map directly to avoid stale state
+        await broadcastAllPsbts(updatedSignedPsbts)
       }
     } catch (e: any) {
       setError(e.message || 'Failed to sign PSBT')
     }
   }
 
-  const broadcastAllPsbts = async () => {
+  const broadcastAllPsbts = async (signedPsbtsMap?: Map<number, string>) => {
     setSettlementStep('broadcasting')
     const results = new Map<number, string>()
+    // Use the passed map or fall back to state (for backwards compatibility)
+    const psbtsToUse = signedPsbtsMap || signedPsbts
     
     for (let i = 0; i < psbts.length; i++) {
-      const signedPsbt = signedPsbts.get(i)
+      const signedPsbt = psbtsToUse.get(i)
       if (!signedPsbt) {
         results.set(i, 'error:not_signed')
         continue
