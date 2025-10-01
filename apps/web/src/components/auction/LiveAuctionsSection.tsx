@@ -10,7 +10,7 @@ export default function LiveAuctionsSection() {
 
   React.useEffect(() => {
     let cancelled = false
-    
+
     queryAuctions({ status: 'live', pageSize: 6, sort: 'endingSoon' })
       .then((result) => {
         if (cancelled) return
@@ -38,18 +38,22 @@ export default function LiveAuctionsSection() {
 
   if (loading) {
     return (
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
         {Array.from({ length: 3 }).map((_, i) => (
           <div key={i} className="card">
-            <div className="card-content">
-              <div className="skeleton h-5 w-24" />
-              <div className="mt-3 space-y-2">
-                <div className="skeleton h-4 w-3/4" />
-                <div className="skeleton h-4 w-1/2" />
+            <div className="card-content space-y-6">
+              <div className="space-y-3">
+                <div className="flex gap-2">
+                  <span className="skeleton h-6 w-24" data-animated="true" />
+                  <span className="skeleton h-6 w-16" data-animated="true" />
+                </div>
+                <div className="skeleton h-8 w-3/4" data-animated="true" />
               </div>
-            </div>
-            <div slot="footer" className="p-3">
-              <div className="skeleton h-8 w-24" />
+              <div className="skeleton h-32 w-full" data-animated="true" />
+              <div className="flex gap-2 border-t border-border/60 pt-6">
+                <span className="skeleton h-12 w-32" data-animated="true" />
+                <span className="skeleton h-12 w-20" data-animated="true" />
+              </div>
             </div>
           </div>
         ))}
@@ -59,23 +63,30 @@ export default function LiveAuctionsSection() {
 
   if (error) {
     return (
-      <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm">
-        Failed to load live auctions: {error}
+      <div role="alert" className="card border border-destructive/30 bg-destructive/5 text-destructive">
+        <div className="card-content space-y-2">
+          <p className="text-sm font-semibold">Failed to load live auctions</p>
+          <p className="text-sm">{error}</p>
+        </div>
       </div>
     )
   }
 
   if (auctions.length === 0) {
     return (
-      <div className="rounded-md border bg-white p-8 text-center dark:border-gray-800 dark:bg-gray-900">
-        <p className="text-sm text-muted-foreground">No live auctions at the moment.</p>
-        <a href="/auctions/new" className="button mt-4">Create the first auction</a>
+      <div className="card">
+        <div className="card-content space-y-4 text-center">
+          <p className="text-sm text-muted-foreground">No live auctions at the moment.</p>
+          <a href="/auctions/new" className="btn btn-primary inline-flex justify-center">
+            Create the first auction
+          </a>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
       {auctions.map((auction) => (
         <AuctionCard key={auction.id} {...auction} onQuickAction={handleQuickAction} />
       ))}

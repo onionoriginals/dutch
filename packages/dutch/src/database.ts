@@ -865,6 +865,28 @@ export class SecureDutchyDatabase {
     return { bids };
   }
 
+  // Get all bids with payment_pending status for monitoring
+  getPendingPayments(): Array<{
+    id: string;
+    auctionId: string;
+    bidderAddress: string;
+    bidAmount: number;
+    quantity: number;
+    status: 'payment_pending';
+    escrowAddress?: string;
+    transactionId?: string;
+    created_at: number;
+    updated_at: number;
+  }> {
+    const pending: any[] = [];
+    for (const bid of this.bids.values()) {
+      if (bid.status === 'payment_pending') {
+        pending.push(bid);
+      }
+    }
+    return pending;
+  }
+
   // Fee utilities (stubbed with positive values for tests)
   async getFeeRates(network: BitcoinNetwork | string): Promise<{ fast: number; normal: number; slow: number }> {
     if (this.mempoolClient) return this.mempoolClient.getFeeRates(network)

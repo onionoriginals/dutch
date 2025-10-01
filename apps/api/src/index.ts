@@ -6,9 +6,12 @@ import { db as packageDb, getBitcoinNetwork, version, SecureDutchyDatabase } fro
 import { db as svcDb } from './services/db'
 import * as bitcoin from 'bitcoinjs-lib'
 import { logger } from './utils/logger'
+import { startAuctionMonitor, type AuctionMonitor } from './jobs/auctionMonitor'
 
 // Track server start time for uptime metrics
 const SERVER_START_TIME = Date.now()
+// Global auction monitor instance
+let auctionMonitor: AuctionMonitor | null = null
 // Standard response schemas
 const SuccessResponse = <T extends TSchema>(dataSchema: T) =>
   t.Object({
@@ -1400,5 +1403,38 @@ if (import.meta.main) {
   
   // Also log to console for easy visibility during development
   console.log(`✓ API listening on http://${advertisedHost}:${port}`)
+  
+  // Start the auction monitor background job
+  try {
+    auctionMonitor = startAuctionMonitor({
+      database: packageDb,
+      intervalMs: 60000, // Run every 60 seconds
+    })
+    logger.info('Auction monitor started', {
+      intervalMs: 60000,
+    })
+  } catch (error: any) {
+    logger.error('Failed to start auction monitor', {
+      error: error.message,
+      stack: error.stack,
+    })
+  }
+  
+  // Graceful shutdown handler
+  process.on('SIGTERM', () => {
+    logger.info('SIGTERM received, shutting down gracefully')
+    if (auctionMonitor) {
+      auctionMonitor.stop()
+    }
+    process.exit(0)
+  })
+  
+  process.on('SIGINT', () => {
+    logger.info('SIGINT received, shutting down gracefully')
+    if (auctionMonitor) {
+      auctionMonitor.stop()
+    }
+    process.exit(0)
+  })
 }
 
