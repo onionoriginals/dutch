@@ -65,15 +65,29 @@ export function useLivePrice(options: UseLivePriceOptions): LivePriceState {
     const isActive = status === 'live' && now >= startMs && now < endMs
 
     if (!isActive) {
-      // Auction is not active, stop updates
+      // Auction is not active, compute final price before stopping updates
       if (animationFrameRef.current !== null) {
         cancelAnimationFrame(animationFrameRef.current)
         animationFrameRef.current = null
       }
-      setState((prev: LivePriceState) => ({
-        ...prev,
+      
+      // Calculate final price at auction end
+      const finalSecondsFromStart = Math.max(0, Math.floor((endMs - startMs) / 1000))
+      const finalPrice = priceAtTime(scheduleInput, finalSecondsFromStart) || scheduleInput.floorPrice
+      
+      // Add final price to history
+      priceHistoryRef.current = [
+        ...priceHistoryRef.current.filter((entry: { timestamp: number; price: number }) => entry.timestamp > now - historyDuration),
+        { timestamp: now, price: finalPrice }
+      ]
+      
+      setState({
+        currentPrice: finalPrice,
+        secondsFromStart: finalSecondsFromStart,
+        timeToNextDrop: 0,
         isActive: false,
-      }))
+        priceHistory: [...priceHistoryRef.current],
+      })
       return
     }
 

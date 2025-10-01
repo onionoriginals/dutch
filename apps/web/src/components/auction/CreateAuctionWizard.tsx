@@ -7,6 +7,7 @@ import { DateTimePicker } from '../inputs/DateTimePicker'
 import { DutchAuctionSchema, dutchAuctionStepFields } from '../../lib/validation/auction'
 import { normalizeDutch } from '../../utils/normalizeAuction'
 import { btcToSats, formatSats, btcToUsd, formatCurrency, getBtcUsdRate } from '../../utils/currency'
+import { useWallet } from '../../lib/stores/wallet.react'
 
 type DraftShape = {
   values: any
@@ -57,6 +58,7 @@ export default function CreateAuctionWizard() {
   const type = 'dutch' as const
   const schema = DutchAuctionSchema
   const steps = dutchAuctionStepFields
+  const { wallet } = useWallet()
 
   const [formValues, setFormValues] = React.useState({} as any)
   const { restored, clearDraft } = useDraftPersistence(formValues)
@@ -76,6 +78,11 @@ export default function CreateAuctionWizard() {
     const payload = normalizeDutch(values)
     
     try {
+      // Check if wallet is connected
+      if (!wallet) {
+        throw new Error('Please connect your wallet to create an auction')
+      }
+
       // Parse inscription IDs (one per line)
       const inscriptionIds = values.inscriptionIds
         .split('\n')
@@ -103,7 +110,7 @@ export default function CreateAuctionWizard() {
           minPrice: values.endPrice,
           duration: duration,
           decrementInterval: values.decrementIntervalSeconds,
-          sellerAddress: 'tb1q...', // TODO: Connect wallet to get seller address
+          sellerAddress: wallet.paymentAddress,
         }),
       })
 
@@ -120,7 +127,7 @@ export default function CreateAuctionWizard() {
       console.error('Failed to create auction:', error)
       alert(`Failed to create auction: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
-  }, [clearDraft])
+  }, [clearDraft, wallet])
 
   const handleValuesChange = React.useCallback((v: any) => {
     setFormValues(v)
@@ -179,6 +186,40 @@ export default function CreateAuctionWizard() {
         <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Create Clearing Auction</h2>
         <p className="text-gray-600 dark:text-gray-400 mt-1">Set up a uniform-price Dutch auction where multiple items are sold and all winners pay the same clearing price</p>
         <WizardPreviewButton type={type} values={formValues} className="mt-3" />
+        
+        {/* Wallet Connection Status */}
+        {wallet ? (
+          <div className="mt-4 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 p-3">
+            <div className="flex items-center gap-2 text-sm">
+              <div className="h-2 w-2 rounded-full bg-green-500"></div>
+              <span className="text-green-800 dark:text-green-200 font-medium">
+                Wallet Connected:
+              </span>
+              <span className="text-green-700 dark:text-green-300 font-mono">
+                {wallet.paymentAddress}
+              </span>
+            </div>
+            <p className="text-xs text-green-700 dark:text-green-300 mt-1 ml-4">
+              This address will be used as the seller address for your auction
+            </p>
+          </div>
+        ) : (
+          <div className="mt-4 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 p-3">
+            <div className="flex items-start gap-2">
+              <svg className="h-5 w-5 text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
+              <div className="flex-1">
+                <p className="text-sm text-yellow-800 dark:text-yellow-200 font-medium">
+                  Wallet Not Connected
+                </p>
+                <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-1">
+                  Please connect your Bitcoin wallet using the button in the top right corner to create an auction. Your wallet address will be used as the seller address.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
       </header>
 
       <Form

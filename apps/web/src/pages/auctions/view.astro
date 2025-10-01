@@ -1,15 +1,9 @@
 ---
-import '../../styles/globals.css'
+import Layout from '../../layouts/Layout.astro'
 import React from 'react'
 import AuctionView from '../../react/auctions/View'
 ---
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Auction</title>
-  </head>
-  <body>
+<Layout title="Auction - Originals">
     <main class="min-h-screen bg-gray-50 p-4 dark:bg-gray-900">
       <div class="mx-auto max-w-4xl space-y-6">
         <header class="flex items-end justify-between gap-4">
@@ -26,7 +20,5 @@ import AuctionView from '../../react/auctions/View'
         <AuctionView client:only="react" />
       </div>
     </main>
-  </body>
-  </html>
-
+</Layout>
 
