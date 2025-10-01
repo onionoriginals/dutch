@@ -127,38 +127,6 @@ export default function AuctionView() {
       decayType: 'linear', // Default to linear for now
     }
   }, [data])
-
-  return (
-    <section className="rounded-lg border bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-800">
-      <AuctionCard
-        id={data.auction.id}
-        title={data.auction.title}
-        type={data.auction.type}
-        status={data.auction.status}
-        startTime={data.auction.startTime}
-        endTime={data.auction.endTime}
-        currency={data.auction.currency}
-        currentPrice={data.auction.currentPrice}
-      />
-      
-      {/* Live Price Display for Dutch Auctions */}
-      {scheduleInput && data.auction.type === 'dutch' && (
-        <div className="mt-6 rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900">
-          <h3 className="mb-3 text-lg font-semibold">Live Price Tracker</h3>
-          <LivePriceDisplay
-            scheduleInput={scheduleInput}
-            startTime={data.auction.startTime}
-            endTime={data.auction.endTime}
-            status={data.auction.status}
-            currency={data.auction.currency}
-            showSparkline={true}
-            showCountdown={true}
-            compact={false}
-          />
-        </div>
-      )}
-    </section>
-
   const isClearingAuction = clearingData?.auction_type === 'clearing'
   const isActive = data.auction.status === 'live'
 
