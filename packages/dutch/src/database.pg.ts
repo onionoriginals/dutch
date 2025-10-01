@@ -95,6 +95,10 @@ export class PostgresDutchyDatabase {
   }
 
   async initialize(): Promise<void> {
+    // Suppress NOTICE messages for the session (e.g., "relation already exists")
+    // This is standard practice for idempotent schema setup with CREATE IF NOT EXISTS
+    await this.sql`SET client_min_messages TO WARNING`;
+    
     await this.sql`create table if not exists meta (
       key text primary key,
       value text not null
