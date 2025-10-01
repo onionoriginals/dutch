@@ -90,14 +90,15 @@ export class PostgresDutchyDatabase {
   private inscriptionEscrows: Map<string, { inscriptionId: string; status: string; details?: any; updatedAt: number }> = new Map()
 
   constructor(public connectionString: string, mempoolClient?: MempoolClientLike) {
-    this.sql = postgres(connectionString, { 
-      max: 5,
-      onnotice: () => {} // Suppress NOTICE messages (e.g., "relation already exists, skipping")
-    })
+    this.sql = postgres(connectionString, { max: 5 })
     this.mempoolClient = mempoolClient
   }
 
   async initialize(): Promise<void> {
+    // Suppress NOTICE messages for the session (e.g., "relation already exists")
+    // This is standard practice for idempotent schema setup with CREATE IF NOT EXISTS
+    await this.sql`SET client_min_messages TO WARNING`;
+    
     await this.sql`create table if not exists meta (
       key text primary key,
       value text not null
