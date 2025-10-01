@@ -4,6 +4,8 @@ import DemoDutchEditor from '../components/auction/DemoDutchEditor'
 import LiveAuctionsSection from '../components/auction/LiveAuctionsSection'
 import WalletButton from '../components/ui/WalletButton'
 import { WalletProvider } from '../lib/wallet/WalletContext'
+import { ToastProvider } from '../lib/toast/ToastContext'
+import ToastContainer from '../components/ui/ToastContainer'
 ---
 <html>
   <head>
@@ -12,8 +14,10 @@ import { WalletProvider } from '../lib/wallet/WalletContext'
     <title>Originals Auctions</title>
   </head>
   <body class="min-h-screen bg-gray-50 dark:bg-gray-950">
-    <WalletProvider client:load>
-      <header class="border-b bg-white/80 backdrop-blur dark:border-gray-900 dark:bg-gray-900/80">
+    <ToastProvider client:load>
+      <WalletProvider client:load>
+        <ToastContainer client:load />
+        <header class="border-b bg-white/80 backdrop-blur dark:border-gray-900 dark:bg-gray-900/80">
         <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
           <a href="/" class="flex items-center gap-2 text-lg font-semibold">
             <span class="inline-block h-6 w-6 rounded bg-black dark:bg-white"></span>
@@ -100,9 +104,10 @@ import { WalletProvider } from '../lib/wallet/WalletContext'
       </section>
     </main>
 
-      <footer class="border-t py-6 text-center text-sm text-muted-foreground">
-        <div class="mx-auto max-w-6xl px-4">© {new Date().getFullYear()} Originals. All rights reserved.</div>
-      </footer>
-    </WalletProvider>
+        <footer class="border-t py-6 text-center text-sm text-muted-foreground">
+          <div class="mx-auto max-w-6xl px-4">© {new Date().getFullYear()} Originals. All rights reserved.</div>
+        </footer>
+      </WalletProvider>
+    </ToastProvider>
   </body>
 </html>
