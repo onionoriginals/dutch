@@ -36,10 +36,15 @@ export function checkWalletCapabilities(): WalletCapabilities {
     return { hasUnisat: false, hasXverse: false }
   }
 
+  const hasUnisat = typeof (window as any).unisat !== 'undefined'
+  const hasXverse = typeof (window as any).XverseProviders?.BitcoinProvider !== 'undefined' || 
+                    typeof (window as any).BitcoinProvider !== 'undefined'
+
+  console.log('[WalletAdapter] Checking wallet capabilities:', { hasUnisat, hasXverse })
+
   return {
-    hasUnisat: typeof (window as any).unisat !== 'undefined',
-    hasXverse: typeof (window as any).XverseProviders?.BitcoinProvider !== 'undefined' || 
-               typeof (window as any).BitcoinProvider !== 'undefined',
+    hasUnisat,
+    hasXverse,
   }
 }
 
@@ -53,6 +58,8 @@ export function getAvailableWallets(): WalletProvider[] {
   if (capabilities.hasUnisat) wallets.push('unisat')
   if (capabilities.hasXverse) wallets.push('xverse')
   
+  console.log('[WalletAdapter] Available wallets:', wallets)
+  
   return wallets
 }
 
@@ -61,8 +68,11 @@ export function getAvailableWallets(): WalletProvider[] {
  * IMPORTANT: Network is switched BEFORE requesting accounts to ensure correct network addresses
  */
 async function connectUnisat(network: BitcoinNetworkType): Promise<Omit<ConnectedWallet, 'provider' | 'network'>> {
+  console.log('[WalletAdapter] Connecting to Unisat with network:', network)
+  
   const unisat = (window as any).unisat
   if (!unisat) {
+    console.error('[WalletAdapter] Unisat wallet object not found on window')
     throw new Error('Unisat wallet not found. Please install the Unisat extension.')
   }
 
@@ -74,6 +84,7 @@ async function connectUnisat(network: BitcoinNetworkType): Promise<Omit<Connecte
   }
 
   try {
+    console.log('[WalletAdapter] Switching Unisat network to:', networkMap[network])
     // CRITICAL: Switch network FIRST before requesting accounts
     // This ensures we get addresses for the correct network
     await unisat.switchNetwork(networkMap[network])
@@ -81,14 +92,18 @@ async function connectUnisat(network: BitcoinNetworkType): Promise<Omit<Connecte
     // Small delay to ensure network switch is complete
     await new Promise(resolve => setTimeout(resolve, 100))
 
+    console.log('[WalletAdapter] Requesting Unisat accounts...')
     // Now request accounts - these will be for the correct network
     const accounts = await unisat.requestAccounts()
+    console.log('[WalletAdapter] Received accounts:', accounts)
+    
     if (!accounts || accounts.length === 0) {
       throw new Error('No accounts found in Unisat wallet')
     }
 
     // Get public key
     const pubKey = await unisat.getPublicKey()
+    console.log('[WalletAdapter] Received public key')
     
     const paymentAddress = accounts[0]
     const paymentPublicKey = pubKey
@@ -114,6 +129,7 @@ async function connectUnisat(network: BitcoinNetworkType): Promise<Omit<Connecte
       ordinalsPublicKey,
     }
   } catch (error: any) {
+    console.error('[WalletAdapter] Unisat connection error:', error)
     if (error?.message?.includes('rejected') || error?.code === 4001) {
       throw new Error('User cancelled wallet connection')
     }
@@ -126,6 +142,8 @@ async function connectUnisat(network: BitcoinNetworkType): Promise<Omit<Connecte
  * Xverse implements the sats-connect protocol, so we use it for reliability
  */
 async function connectXverse(network: BitcoinNetworkType): Promise<Omit<ConnectedWallet, 'provider' | 'network'>> {
+  console.log('[WalletAdapter] Connecting to Xverse with network:', network)
+  
   return new Promise((resolve, reject) => {
     const options: GetAddressOptions = {
       payload: {
@@ -137,6 +155,8 @@ async function connectXverse(network: BitcoinNetworkType): Promise<Omit<Connecte
       },
       onFinish: (response: GetAddressResponse) => {
         try {
+          console.log('[WalletAdapter] Xverse connection successful, received addresses')
+          
           const paymentAddress = response.addresses.find(
             (addr) => addr.purpose === 'payment'
           )
@@ -161,14 +181,17 @@ async function connectXverse(network: BitcoinNetworkType): Promise<Omit<Connecte
             ordinalsPublicKey: ordinalsAddress.publicKey,
           })
         } catch (error) {
+          console.error('[WalletAdapter] Error processing Xverse response:', error)
           reject(error)
         }
       },
       onCancel: () => {
+        console.log('[WalletAdapter] User cancelled Xverse connection')
         reject(new Error('User cancelled wallet connection'))
       },
     }
 
+    console.log('[WalletAdapter] Calling getAddress for Xverse...')
     getAddress(options)
   })
 }

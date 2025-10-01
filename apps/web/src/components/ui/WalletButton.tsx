@@ -216,7 +216,11 @@ export default function WalletButton({ className }: WalletButtonProps) {
                 {availableWallets.map((provider) => (
                   <button
                     key={provider}
-                    onClick={() => handleConnect(provider)}
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      handleConnect(provider)
+                    }}
                     className="flex w-full items-center justify-between rounded-2xl border border-border/60 bg-secondary/60 px-4 py-3 text-left text-sm font-semibold text-foreground transition hover:border-primary/50 hover:bg-secondary/80"
                   >
                     <span className="capitalize">{provider}</span>
