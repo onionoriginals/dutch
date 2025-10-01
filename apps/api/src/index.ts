@@ -523,6 +523,117 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
           set.status = 400
           return error('quantity, startPrice, minPrice, duration, sellerAddress required', 'VALIDATION_ERROR')
         }
+
+        // ===== SECURITY: Server-side Inscription Ownership Verification =====
+        // Verify each inscription is owned by the seller and is unspent
+        // This prevents malicious actors from bypassing client-side checks
+        const base = getMempoolApiBase()
+        const verificationErrors: string[] = []
+
+        for (let i = 0; i < inscriptionIds.length; i++) {
+          const inscriptionId = String(inscriptionIds[i])
+          
+          // Validate and parse inscription ID format
+          const inscriptionRegex = /^[0-9a-fA-F]{64}i\d+$/
+          if (!inscriptionRegex.test(inscriptionId)) {
+            verificationErrors.push(`Inscription ${i + 1}: Invalid format. Expected <txid>i<index>`)
+            continue
+          }
+
+          const [txid, voutStr] = inscriptionId.split('i')
+          if (!voutStr) {
+            verificationErrors.push(`Inscription ${i + 1}: Invalid format, missing vout index`)
+            continue
+          }
+          const voutIndex = parseInt(voutStr, 10)
+          
+          if (!Number.isFinite(voutIndex)) {
+            verificationErrors.push(`Inscription ${i + 1}: Invalid vout index`)
+            continue
+          }
+
+          try {
+            // Fetch transaction details
+            const txResp = await fetch(`${base}/tx/${txid}`)
+            if (!txResp.ok) {
+              if (txResp.status === 404) {
+                verificationErrors.push(`Inscription ${i + 1}: Transaction ${txid} not found on ${getBitcoinNetwork()}`)
+              } else {
+                verificationErrors.push(`Inscription ${i + 1}: Failed to fetch transaction (HTTP ${txResp.status})`)
+              }
+              continue
+            }
+
+            const txJson = await txResp.json() as any
+            const vout = (txJson?.vout || [])[voutIndex]
+            
+            if (!vout) {
+              verificationErrors.push(`Inscription ${i + 1}: Output ${voutIndex} not found in transaction ${txid}`)
+              continue
+            }
+
+            // Verify ownership
+            const outputAddress = String(vout?.scriptpubkey_address || '')
+            const ownerMatches = outputAddress === String(sellerAddress)
+            
+            if (!ownerMatches) {
+              verificationErrors.push(
+                `Inscription ${i + 1}: Ownership mismatch. Owned by ${outputAddress || 'unknown'}, not ${sellerAddress}`
+              )
+              continue
+            }
+
+            // Check if spent
+            const outspendsResp = await fetch(`${base}/tx/${txid}/outspends`)
+            if (!outspendsResp.ok) {
+              verificationErrors.push(`Inscription ${i + 1}: Failed to verify outspend status`)
+              continue
+            }
+
+            const outspends = await outspendsResp.json() as any
+            const outspend = outspends?.[voutIndex]
+            const spent = !!outspend?.spent
+            
+            if (spent) {
+              verificationErrors.push(`Inscription ${i + 1}: Already spent and cannot be auctioned`)
+              continue
+            }
+
+            // Log successful verification
+            logger.info('Clearing auction inscription verified', {
+              operation: 'clearing-inscription-verification',
+              inscriptionId,
+              index: i + 1,
+              ownerMatches,
+              spent: false,
+            })
+          } catch (fetchError: any) {
+            verificationErrors.push(`Inscription ${i + 1}: Network error - ${fetchError.message}`)
+            continue
+          }
+        }
+
+        // If any inscription failed verification, reject the entire auction creation
+        if (verificationErrors.length > 0) {
+          set.status = 403
+          logger.warn('Clearing auction creation rejected', {
+            operation: 'clearing-auction-verification-failed',
+            sellerAddress,
+            inscriptionCount: inscriptionIds.length,
+            errorCount: verificationErrors.length,
+          })
+          return error(
+            `Inscription verification failed:\n${verificationErrors.join('\n')}`,
+            'OWNERSHIP_VERIFICATION_FAILED'
+          )
+        }
+
+        logger.info('All clearing auction inscriptions verified', {
+          operation: 'clearing-auction-verified',
+          inscriptionCount: inscriptionIds.length,
+          sellerAddress,
+        })
+
         const id = String(auctionId ?? `auc_${Date.now()}`)
         const input = {
           id,
@@ -538,6 +649,10 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
         const res = (database as any).createClearingPriceAuction(input)
         return success(res)
       } catch (err: any) {
+        logger.error('Clearing auction creation error', {
+          operation: 'clearing-auction-error',
+          error: err?.message,
+        })
         set.status = 500
         return error(err?.message || 'internal_error', 'INTERNAL_ERROR')
       }

@@ -141,7 +141,7 @@ The inscription verification system validates Bitcoin inscription ownership thro
 
 **Endpoint:** `POST /api/clearing/create-auction`
 
-**Description:** Creates a multi-item clearing auction (uniform price Dutch auction).
+**Description:** Creates a multi-item clearing auction (uniform price Dutch auction) with full server-side verification.
 
 **Request Body:**
 ```json
@@ -160,7 +160,43 @@ The inscription verification system validates Bitcoin inscription ownership thro
 }
 ```
 
-**Note:** Currently, clearing auction endpoint doesn't enforce inscription verification server-side. Client-side verification should be performed before calling this endpoint.
+**Security:** This endpoint performs server-side verification of ALL inscriptions before creating the auction. Each inscription is verified for:
+- Valid format
+- Transaction existence
+- Ownership by seller address
+- Unspent UTXO status
+
+**Success Response (200):**
+```json
+{
+  "ok": true,
+  "data": {
+    "success": true,
+    "auctionDetails": {
+      "id": "auc_1234567890",
+      "inscription_id": "abc123...def456i0",
+      "inscription_ids": ["abc123...def456i0", "def456...abc789i1", "ghi789...xyz012i0"],
+      "quantity": 3,
+      "itemsRemaining": 3,
+      "status": "active",
+      "created_at": 1234567890,
+      "updated_at": 1234567890,
+      "auction_type": "clearing"
+    }
+  }
+}
+```
+
+**Error Response - Verification Failed (403):**
+```json
+{
+  "ok": false,
+  "error": "Inscription verification failed:\nInscription 1: Ownership mismatch. Owned by bc1qxyz..., not bc1qabc...\nInscription 2: Already spent and cannot be auctioned",
+  "code": "OWNERSHIP_VERIFICATION_FAILED"
+}
+```
+
+**Note:** If ANY inscription fails verification, the entire auction creation is rejected. This is an all-or-nothing operation for security.
 
 ## mempool.space API Integration
 
@@ -207,6 +243,7 @@ The inscription verification system validates Bitcoin inscription ownership thro
 | `OUTPUT_NOT_FOUND` | 404 | Output doesn't exist | Check vout index in inscription ID |
 | `OWNERSHIP_MISMATCH` | 403 | Seller doesn't own inscription | Use correct seller address |
 | `ALREADY_SPENT` | 403 | Inscription UTXO is spent | Cannot auction spent inscriptions |
+| `OWNERSHIP_VERIFICATION_FAILED` | 403 | One or more inscriptions failed verification (clearing auctions) | Check error details for each inscription |
 | `INTERNAL_ERROR` | 500 | Server error | Try again later |
 
 ## Client-Side Verification
