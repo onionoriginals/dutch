@@ -1,16 +1,10 @@
 ---
+import Layout from '../layouts/Layout.astro'
 import React from 'react'
 import AuctionTypeSelectorDemo from '../components/auction/AuctionTypeSelectorDemo'
 import DutchEditorDemo from '../components/auction/DutchEditorDemo'
-
 ---
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Auction Components Demo</title>
-  </head>
-  <body>
+<Layout title="Auction Components Demo - Originals">
     <main style="padding: 24px; max-width: 920px; margin: 0 auto;">
       <h1 style="font-size: 1.5rem; font-weight: 700;">Auction Components Demo</h1>
 
@@ -24,5 +18,4 @@ import DutchEditorDemo from '../components/auction/DutchEditorDemo'
         <DutchEditorDemo client:load />
       </section>
     </main>
-  </body>
-</html>
+</Layout>
