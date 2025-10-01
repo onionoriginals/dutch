@@ -169,7 +169,7 @@ export class AuctionMonitor {
   private async checkPendingPayments(): Promise<void> {
     try {
       // Get all bids with payment_pending status
-      const pendingPayments = this.database.getPendingPayments?.() || []
+      const pendingPayments = this.database.getPendingPayments() || []
 
       if (pendingPayments.length === 0) {
         logger.debug('No pending payments to check')
@@ -205,7 +205,7 @@ export class AuctionMonitor {
             
             if (isConfirmed) {
               // Update bid status to payment_confirmed
-              const updateResult = this.database.confirmBidPayment?.(
+              const updateResult = this.database.confirmBidPayment(
                 payment.id,
                 payment.transactionId
               )
