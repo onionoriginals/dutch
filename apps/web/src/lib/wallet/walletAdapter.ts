@@ -170,6 +170,7 @@ async function connectUnisat(network: BitcoinNetworkType): Promise<Omit<Connecte
     'Mainnet': 'BITCOIN_MAINNET',
     'Testnet': 'BITCOIN_TESTNET',
     'Signet': 'BITCOIN_SIGNET',
+    // Note: Regtest not supported by standard wallet extensions
   }
 
   try {    
