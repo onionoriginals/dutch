@@ -413,7 +413,8 @@ export function formatAddress(address: string, chars: number = 6): string {
  */
 export async function getInscriptions(
   provider: WalletProvider,
-  address: string
+  address: string,
+  network?: BitcoinNetworkType
 ): Promise<Inscription[]> {
   if (typeof window === 'undefined') {
     throw new Error('Wallet operations are only available in browser environment')
@@ -425,7 +426,7 @@ export async function getInscriptions(
         return await getUnisatInscriptions(address)
 
       case 'xverse':
-        return await getXverseInscriptions(address)
+        return await getXverseInscriptions(address, network)
 
       default:
         throw new Error(`Unsupported wallet provider: ${provider}`)
@@ -483,11 +484,21 @@ async function getUnisatInscriptions(address: string): Promise<Inscription[]> {
  * Get inscriptions from Xverse wallet
  * Xverse doesn't have a direct method, so we'll use their API
  */
-async function getXverseInscriptions(address: string): Promise<Inscription[]> {
+async function getXverseInscriptions(address: string, network?: BitcoinNetworkType): Promise<Inscription[]> {
   try {
-    // Determine network (testnet or mainnet)
-    const network = address.startsWith('tb1') ? 'testnet' : 'mainnet'
-    const apiBase = network === 'testnet' 
+    // Determine network - use provided network or detect from address
+    // Note: Both testnet and signet use 'tb1' prefix, so network param is important for signet
+    let apiNetwork: 'mainnet' | 'testnet' = 'mainnet'
+    
+    if (network) {
+      // If network is provided, use it (Signet uses testnet API)
+      apiNetwork = network === 'Mainnet' ? 'mainnet' : 'testnet'
+    } else {
+      // Fallback to address detection (can't distinguish testnet from signet)
+      apiNetwork = address.startsWith('tb1') ? 'testnet' : 'mainnet'
+    }
+    
+    const apiBase = apiNetwork === 'testnet' 
       ? 'https://api-3.testnet.xverse.app'
       : 'https://api-3.xverse.app'
 

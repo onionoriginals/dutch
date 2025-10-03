@@ -48,6 +48,7 @@ export function FieldError() {
   const { name, errorId } = useFieldContext()
   const { formState: { errors } } = useFormContext()
   const err = (errors as any)[name]
+  
   if (!err) return null
   const message = (err?.message ?? String(err)) as string
   return (

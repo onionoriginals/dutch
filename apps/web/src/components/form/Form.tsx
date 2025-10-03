@@ -75,7 +75,7 @@ export function Form<TValues extends Record<string, any>>({ schema, defaultValue
   const methods = useForm<TValues>({
     resolver: stepAwareResolver as any,
     defaultValues: defaultValues as any,
-    mode: 'onBlur',
+    mode: 'onTouched',
     reValidateMode: 'onChange',
     shouldFocusError: true
   })
@@ -108,15 +108,58 @@ export function Form<TValues extends Record<string, any>>({ schema, defaultValue
   const isLast = stepIndex === stepsCount - 1
 
   const next = React.useCallback(async () => {
-    const isValid = await methods.trigger(currentStepFields as any, { shouldFocus: true })
-    if (!isValid) return
-    
+    // If we're on the last step, validate ALL fields before submitting
     if (isLast) {
+      const allValid = await methods.trigger(undefined, { shouldFocus: true })
+      if (!allValid) {
+        // Find the first step with errors and navigate to it
+        const errors = methods.formState.errors
+        const errorFields = Object.keys(errors)
+        
+        if (errorFields.length > 0) {
+          const firstErrorField = errorFields[0]
+          if (firstErrorField) {
+            const stepWithError = steps.findIndex(step => 
+              step.props.fields.includes(firstErrorField)
+            )
+            
+            if (stepWithError >= 0 && stepWithError !== stepIndex) {
+              setStepIndex(stepWithError)
+              return
+            }
+          }
+        }
+        return
+      }
+      // All fields are valid, proceed with submission
       await methods.handleSubmit(onSubmit)()
     } else {
-      setStepIndex((i) => Math.min(i + 1, stepsCount - 1))
+      // For intermediate steps, only validate current step fields
+      try {
+        const isValid = await methods.trigger(currentStepFields as any, { shouldFocus: true })
+        
+        if (!isValid) {
+          return
+        }
+        setStepIndex((i) => Math.min(i + 1, stepsCount - 1))
+      } catch (error: any) {
+        // Handle ZodError when validation throws instead of returning errors
+        // This happens with the current zodResolver setup
+        if (error?.issues) {
+          error.issues.forEach((issue: any) => {
+            const field = issue.path[0]
+            if (field && currentStepFields.includes(field)) {
+              methods.setError(field as any, {
+                type: 'validation',
+                message: issue.message
+              }, { shouldFocus: true })
+            }
+          })
+        }
+        return
+      }
     }
-  }, [currentStepFields, stepIndex, isLast, stepsCount, methods, onSubmit])
+  }, [currentStepFields, stepIndex, isLast, stepsCount, methods, onSubmit, steps])
 
   const back = React.useCallback(() => {
     setStepIndex((i) => Math.max(i - 1, 0))

@@ -12,6 +12,7 @@ import { signPsbt, connectWallet } from '../../lib/bitcoin/psbtSigner'
 import { broadcastTransaction, pollForConfirmations, getMempoolLink, extractTransactionFromPsbt, type TransactionStatus } from '../../lib/bitcoin/broadcastTransaction'
 import { verifyMultipleInscriptions, checkAllValid, type Network } from '../../lib/bitcoin/verifyInscription'
 import { useWallet } from '../../lib/stores/wallet.react'
+import { formatAddress } from '../../lib/wallet/walletAdapter'
 
 type DraftShape = {
   values: any
@@ -84,8 +85,11 @@ export default function CreateAuctionWizard() {
 
   const defaultValues = React.useMemo(() => {
     if (restored?.values) return restored.values as Record<string, unknown>
-    return {}
-  }, [restored])
+    // Set wallet payment address as default seller address
+    return {
+      sellerAddress: wallet?.paymentAddress || ''
+    }
+  }, [restored, wallet?.paymentAddress])
 
   // consider any non-empty form values as dirty
   const isDirty = React.useMemo(() => Object.keys(formValues || {}).length > 0, [formValues])
@@ -118,8 +122,8 @@ export default function CreateAuctionWizard() {
         throw new Error('At least one inscription ID is required')
       }
       
-      // Determine network from environment or default to testnet for safety
-      const network: Network = ((import.meta as any)?.env?.PUBLIC_BITCOIN_NETWORK as Network) || 'testnet'
+      // Determine network from connected wallet (BitcoinNetworkType is capitalized, Network is lowercase)
+      const network: Network = wallet.network.toLowerCase() as Network
       
       // Step 1: Verify inscription ownership before creating auction
       setIsVerifying(true)
@@ -380,7 +384,7 @@ export default function CreateAuctionWizard() {
                 Wallet Connected:
               </span>
               <span className="text-green-700 dark:text-green-300 font-mono">
-                {wallet.paymentAddress}
+                {formatAddress(wallet.paymentAddress)}
               </span>
             </div>
             <p className="text-xs text-green-700 dark:text-green-300 mt-1 ml-4">
@@ -418,6 +422,7 @@ export default function CreateAuctionWizard() {
           <StepProgress total={steps.length + 1} />
         </div>
         <FormAutosave onValuesChange={handleValuesChange} />
+        <FormWalletSync walletAddress={wallet?.paymentAddress} />
         <FormStepRouter />
 
         {/* Step 1: Details */}
@@ -457,6 +462,7 @@ export default function CreateAuctionWizard() {
                     onChange={field.onChange}
                     walletProvider={wallet?.provider}
                     walletAddress={wallet?.ordinalsAddress}
+                    walletNetwork={wallet?.network}
                     placeholder="e.g.&#10;abc123...def456i0&#10;789abc...123def i1&#10;xyz987...654abci0"
                   />
                 )}
@@ -475,7 +481,11 @@ export default function CreateAuctionWizard() {
               <FieldLabel>Your Bitcoin Address (Seller)</FieldLabel>
               <Input placeholder="e.g. bc1q... or tb1q..." />
               <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                This address must own all the inscriptions listed above. Ownership will be verified before auction creation.
+                {wallet ? (
+                  <>Auto-filled from your connected wallet. This address must own all the inscriptions listed above. Ownership will be verified before auction creation.</>
+                ) : (
+                  <>Connect your wallet to auto-fill this field, or enter an address manually. This address must own all the inscriptions listed above.</>
+                )}
               </div>
               <FieldError />
             </FormField>
@@ -569,6 +579,7 @@ export default function CreateAuctionWizard() {
         {/* Review */}
         <FormStep fields={[]}> 
           <ReviewBlock type={type} />
+          <FormValidationErrors />
           {verificationError && (
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mt-4">
               <p className="text-sm text-red-900 dark:text-red-200 whitespace-pre-line">{verificationError}</p>
@@ -593,6 +604,49 @@ export default function CreateAuctionWizard() {
     </div>
   )
 }
+function FormValidationErrors() {
+  const { form, goTo } = useFormWizard()
+  const errors = form.formState.errors
+  const errorFields = Object.keys(errors)
+
+  if (errorFields.length === 0) return null
+
+  // Map fields to their step index
+  const stepFields = dutchAuctionStepFields
+  const fieldToStep = new Map<string, number>()
+  stepFields.forEach((fields, stepIndex) => {
+    fields.forEach(field => fieldToStep.set(field, stepIndex))
+  })
+
+  return (
+    <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mt-4">
+      <h4 className="text-sm font-medium text-red-900 dark:text-red-200 mb-2">
+        Please fix the following errors:
+      </h4>
+      <ul className="space-y-1">
+        {errorFields.map(field => {
+          const error = (errors as any)[field]
+          const message = error?.message || String(error)
+          const stepIndex = fieldToStep.get(field)
+          
+          return (
+            <li key={field} className="text-sm text-red-800 dark:text-red-300">
+              <button
+                type="button"
+                onClick={() => stepIndex !== undefined && goTo(stepIndex)}
+                className="hover:underline font-medium"
+              >
+                {field}
+              </button>
+              : {message}
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+
 function WizardPreviewButton({ type, values, className }: { type: 'dutch'; values: any; className?: string }) {
   const href = React.useMemo(() => {
     if (!type) return '#'
@@ -815,6 +869,21 @@ function FormAutosave({ onValuesChange }: { onValuesChange: (v: any) => void }) 
     const sub = form.watch((v: any) => onValuesChange(v))
     return () => sub.unsubscribe()
   }, [form, onValuesChange])
+  return null
+}
+
+function FormWalletSync({ walletAddress }: { walletAddress?: string }) {
+  const { form } = useFormWizard()
+  React.useEffect(() => {
+    // Only update if wallet address is available and the field is currently empty or undefined
+    if (walletAddress) {
+      const currentValue = form.getValues('sellerAddress')
+      // Only auto-fill if the field is empty (don't overwrite user input)
+      if (!currentValue || currentValue.trim() === '') {
+        form.setValue('sellerAddress', walletAddress, { shouldValidate: false })
+      }
+    }
+  }, [walletAddress, form])
   return null
 }
 

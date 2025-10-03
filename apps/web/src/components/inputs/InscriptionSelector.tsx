@@ -1,5 +1,5 @@
 import React from 'react'
-import { getInscriptions, type Inscription, type WalletProvider } from '../../lib/wallet/walletAdapter'
+import { getInscriptions, type Inscription, type WalletProvider, type BitcoinNetworkType } from '../../lib/wallet/walletAdapter'
 import { InscriptionPreview } from './InscriptionPreview'
 
 export interface InscriptionSelectorProps {
@@ -7,6 +7,7 @@ export interface InscriptionSelectorProps {
   onChange?: (value: string) => void
   walletProvider?: WalletProvider
   walletAddress?: string
+  walletNetwork?: BitcoinNetworkType
   disabled?: boolean
   placeholder?: string
 }
@@ -16,6 +17,7 @@ export function InscriptionSelector({
   onChange,
   walletProvider,
   walletAddress,
+  walletNetwork,
   disabled = false,
   placeholder = 'e.g.\nabc123...def456i0\n789abc...123def i1\nxyz987...654abci0',
 }: InscriptionSelectorProps) {
@@ -47,7 +49,7 @@ export function InscriptionSelector({
       setError(null)
       
       try {
-        const fetchedInscriptions = await getInscriptions(walletProvider, walletAddress)
+        const fetchedInscriptions = await getInscriptions(walletProvider, walletAddress, walletNetwork)
         setInscriptions(fetchedInscriptions)
         
         if (fetchedInscriptions.length === 0) {
@@ -62,7 +64,7 @@ export function InscriptionSelector({
     }
 
     fetchInscriptions()
-  }, [walletProvider, walletAddress])
+  }, [walletProvider, walletAddress, walletNetwork])
 
   const handleToggleInscription = (inscriptionId: string) => {
     const newSelected = new Set(selectedIds)
