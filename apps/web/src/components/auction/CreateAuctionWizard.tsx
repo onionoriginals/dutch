@@ -13,6 +13,19 @@ import { broadcastTransaction, pollForConfirmations, getMempoolLink, extractTran
 import { verifyMultipleInscriptions, checkAllValid, type Network } from '../../lib/bitcoin/verifyInscription'
 import { useWallet } from '../../lib/stores/wallet.react'
 import { formatAddress } from '../../lib/wallet/walletAdapter'
+import { NetworkBadge } from './NetworkBadge'
+import { NetworkSelector } from './NetworkSelector'
+import { NetworkMismatchBanner } from './NetworkMismatchBanner'
+import { NetworkChangeNotification } from './NetworkChangeNotification'
+import {
+  type AppNetwork,
+  walletNetworkToAppNetwork,
+  appNetworkToWalletNetwork,
+  parseNetworkFromUrl,
+  validateAddressForNetwork,
+  getExplorerTxLink,
+  emitNetworkTelemetry,
+} from '../../lib/config/networks'
 
 type DraftShape = {
   values: any
@@ -63,7 +76,27 @@ export default function CreateAuctionWizard() {
   const type = 'dutch' as const
   const schema = DutchAuctionSchema
   const steps = dutchAuctionStepFields
-  const { wallet } = useWallet()
+  const { wallet, disconnectWallet: disconnectWalletAction, connectWallet: connectWalletAction } = useWallet()
+
+  // Network state management
+  const [auctionNetwork, setAuctionNetwork] = React.useState<AppNetwork>(() => {
+    // Priority: URL param > wallet network > default (testnet)
+    const urlNetwork = parseNetworkFromUrl('testnet')
+    if (wallet) {
+      const walletAppNetwork = walletNetworkToAppNetwork(wallet.network)
+      return urlNetwork !== 'testnet' ? urlNetwork : walletAppNetwork
+    }
+    return urlNetwork
+  })
+  
+  const [showNetworkSelector, setShowNetworkSelector] = React.useState(false)
+  const [showNetworkChangeNotification, setShowNetworkChangeNotification] = React.useState(false)
+  const [detectedWalletNetworkChange, setDetectedWalletNetworkChange] = React.useState<AppNetwork | null>(null)
+  
+  // Track the last wallet network we synced from to detect changes
+  const lastSyncedWalletNetworkRef = React.useRef<AppNetwork | null>(
+    wallet ? walletNetworkToAppNetwork(wallet.network) : null
+  )
 
   const [formValues, setFormValues] = React.useState({} as any)
   const { restored, clearDraft } = useDraftPersistence(formValues)
@@ -83,6 +116,40 @@ export default function CreateAuctionWizard() {
   const [isSubmitting, setIsSubmitting] = React.useState(false)
   const [verificationError, setVerificationError] = React.useState<string | null>(null)
 
+  // Detect wallet network changes and notify user
+  React.useEffect(() => {
+    if (!wallet) {
+      lastSyncedWalletNetworkRef.current = null
+      return
+    }
+    
+    const currentWalletNetwork = walletNetworkToAppNetwork(wallet.network)
+    const lastSyncedNetwork = lastSyncedWalletNetworkRef.current
+    
+    // If this is the first wallet connection, sync immediately without notification
+    if (lastSyncedNetwork === null) {
+      lastSyncedWalletNetworkRef.current = currentWalletNetwork
+      setAuctionNetwork(currentWalletNetwork)
+      emitNetworkTelemetry('wizard.network_detected', {
+        network: currentWalletNetwork,
+        walletNetwork: wallet.network,
+        source: 'wallet_initial',
+      })
+      return
+    }
+    
+    // If wallet network changed and differs from current auction network, notify user
+    if (currentWalletNetwork !== lastSyncedNetwork && currentWalletNetwork !== auctionNetwork) {
+      setDetectedWalletNetworkChange(currentWalletNetwork)
+      setShowNetworkChangeNotification(true)
+      emitNetworkTelemetry('wizard.wallet_network_changed', {
+        oldNetwork: lastSyncedNetwork,
+        newNetwork: currentWalletNetwork,
+        currentAuctionNetwork: auctionNetwork,
+      })
+    }
+  }, [wallet, auctionNetwork])
+
   const defaultValues = React.useMemo(() => {
     if (restored?.values) return restored.values as Record<string, unknown>
     // Set wallet payment address as default seller address
@@ -90,6 +157,86 @@ export default function CreateAuctionWizard() {
       sellerAddress: wallet?.paymentAddress || ''
     }
   }, [restored, wallet?.paymentAddress])
+  
+  // Check if wallet and auction networks match
+  const walletNetwork = wallet ? walletNetworkToAppNetwork(wallet.network) : null
+  const hasNetworkMismatch = wallet && walletNetwork !== auctionNetwork
+  
+  // Handler for network change
+  const handleNetworkChange = React.useCallback((newNetwork: AppNetwork) => {
+    emitNetworkTelemetry('wizard.network_changed', {
+      oldNetwork: auctionNetwork,
+      newNetwork,
+      hasWallet: !!wallet,
+    })
+    setAuctionNetwork(newNetwork)
+    setShowNetworkSelector(false)
+    
+    // Update the last synced network if this matches the wallet
+    if (wallet && walletNetworkToAppNetwork(wallet.network) === newNetwork) {
+      lastSyncedWalletNetworkRef.current = newNetwork
+    }
+    
+    // Update URL if supported
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href)
+      url.searchParams.set('network', newNetwork)
+      window.history.replaceState({}, '', url.toString())
+    }
+  }, [auctionNetwork, wallet])
+  
+  // Handler for accepting wallet network change notification
+  const handleAcceptWalletNetworkChange = React.useCallback(() => {
+    if (detectedWalletNetworkChange) {
+      handleNetworkChange(detectedWalletNetworkChange)
+      lastSyncedWalletNetworkRef.current = detectedWalletNetworkChange
+      setShowNetworkChangeNotification(false)
+      setDetectedWalletNetworkChange(null)
+      emitNetworkTelemetry('wizard.wallet_network_change_accepted', {
+        network: detectedWalletNetworkChange,
+      })
+    }
+  }, [detectedWalletNetworkChange, handleNetworkChange])
+  
+  // Handler for dismissing wallet network change notification
+  const handleDismissWalletNetworkChange = React.useCallback(() => {
+    if (detectedWalletNetworkChange) {
+      setShowNetworkChangeNotification(false)
+      setDetectedWalletNetworkChange(null)
+      emitNetworkTelemetry('wizard.wallet_network_change_dismissed', {
+        detectedNetwork: detectedWalletNetworkChange,
+        keptNetwork: auctionNetwork,
+      })
+    }
+  }, [detectedWalletNetworkChange, auctionNetwork])
+  
+  // Handler for resolving network mismatch - switch wizard to wallet
+  const handleSwitchWizardToWallet = React.useCallback(() => {
+    if (walletNetwork) {
+      emitNetworkTelemetry('wizard.mismatch_resolved', {
+        method: 'switch_wizard',
+        network: walletNetwork,
+      })
+      handleNetworkChange(walletNetwork)
+    }
+  }, [walletNetwork, handleNetworkChange])
+  
+  // Handler for resolving network mismatch - reconnect wallet
+  const handleSwitchWalletToWizard = React.useCallback(async () => {
+    if (!wallet) return
+    
+    emitNetworkTelemetry('wizard.mismatch_resolved', {
+      method: 'switch_wallet',
+      network: auctionNetwork,
+    })
+    
+    // Disconnect current wallet
+    disconnectWalletAction()
+    
+    // Prompt user to reconnect with correct network
+    // The wallet store will handle the reconnection with the selected network
+    alert(`Please reconnect your wallet and select ${auctionNetwork} network in your wallet settings.`)
+  }, [wallet, auctionNetwork, disconnectWalletAction])
 
   // consider any non-empty form values as dirty
   const isDirty = React.useMemo(() => Object.keys(formValues || {}).length > 0, [formValues])
@@ -102,7 +249,24 @@ export default function CreateAuctionWizard() {
     try {
       // Check if wallet is connected
       if (!wallet) {
+        emitNetworkTelemetry('wizard.submit_failed', {
+          network: auctionNetwork,
+          error: 'no_wallet',
+        })
         throw new Error('Please connect your wallet to create an auction')
+      }
+      
+      // CRITICAL: Validate wallet and wizard networks match
+      if (hasNetworkMismatch) {
+        emitNetworkTelemetry('wizard.submit_blocked', {
+          network: auctionNetwork,
+          walletNetwork: wallet.network,
+          reason: 'network_mismatch',
+        })
+        throw new Error(
+          `Network mismatch: Your wallet is on ${wallet.network} but the auction is configured for ${auctionNetwork}. ` +
+          `Please resolve this mismatch before creating the auction.`
+        )
       }
 
       // Parse inscription IDs (one per line)
@@ -118,12 +282,24 @@ export default function CreateAuctionWizard() {
         throw new Error('Seller address is required. Please connect your wallet or enter an address manually.')
       }
       
+      // Validate seller address matches the auction network
+      if (!validateAddressForNetwork(sellerAddress, auctionNetwork)) {
+        emitNetworkTelemetry('wizard.submit_failed', {
+          network: auctionNetwork,
+          error: 'invalid_address_network',
+        })
+        throw new Error(
+          `Invalid address: The seller address does not match the ${auctionNetwork} network. ` +
+          `Please ensure your wallet is connected to the correct network.`
+        )
+      }
+      
       if (inscriptionIds.length === 0) {
         throw new Error('At least one inscription ID is required')
       }
       
-      // Determine network from connected wallet (BitcoinNetworkType is capitalized, Network is lowercase)
-      const network: Network = wallet.network.toLowerCase() as Network
+      // Use the auction network for all operations
+      const network: Network = auctionNetwork
       
       // Step 1: Verify inscription ownership before creating auction
       setIsVerifying(true)
@@ -142,9 +318,18 @@ export default function CreateAuctionWizard() {
         const errorMessages = errors.map((e, i) => `${i + 1}. ${e.error}`).join('\n')
         const errorMsg = `Inscription verification failed:\n${errorMessages}`
         setVerificationError(errorMsg)
+        emitNetworkTelemetry('wizard.verification_failed', {
+          network: auctionNetwork,
+          inscriptionCount: inscriptionIds.length,
+          errors: errorMessages,
+        })
         throw new Error(errorMsg)
       }
       
+      emitNetworkTelemetry('wizard.verification_success', {
+        network: auctionNetwork,
+        inscriptionCount: inscriptionIds.length,
+      })
       console.log('✓ All inscriptions verified successfully')
       
       // For now, we'll use the first inscription for single-item auction
@@ -173,6 +358,7 @@ export default function CreateAuctionWizard() {
           duration: duration,
           decrementInterval: values.decrementIntervalSeconds,
           sellerAddress: sellerAddress,
+          network: auctionNetwork,
         }),
       })
 
@@ -182,6 +368,12 @@ export default function CreateAuctionWizard() {
       if (!response.ok || !result.ok) {
         const errorMsg = result.error || 'Failed to create auction'
         const errorCode = result.code || ''
+        
+        emitNetworkTelemetry('wizard.api_create_failed', {
+          network: auctionNetwork,
+          errorCode,
+          error: errorMsg,
+        })
         
         // Provide user-friendly error messages based on error codes
         let userMessage = errorMsg
@@ -195,6 +387,11 @@ export default function CreateAuctionWizard() {
         
         throw new Error(userMessage)
       }
+      
+      emitNetworkTelemetry('wizard.api_create_success', {
+        network: auctionNetwork,
+        auctionId: result.data?.id,
+      })
 
       const { id: auctionId, address: auctionAddress, psbt, inscriptionInfo } = result.data
       
@@ -212,6 +409,10 @@ export default function CreateAuctionWizard() {
     } catch (error) {
       console.error('Failed to create auction:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
+      emitNetworkTelemetry('wizard.submit_error', {
+        network: auctionNetwork,
+        error: errorMessage,
+      })
       setPsbtSigningState({
         stage: 'error',
         error: errorMessage,
@@ -220,7 +421,7 @@ export default function CreateAuctionWizard() {
       setIsVerifying(false)
       setIsSubmitting(false)
     }
-  }, [wallet])
+  }, [wallet, auctionNetwork, hasNetworkMismatch])
   
   // Handler for PSBT signing after user clicks "Sign with Wallet"
   const handleSignPsbt = React.useCallback(async () => {
@@ -251,14 +452,23 @@ export default function CreateAuctionWizard() {
       
       console.log('Transaction extracted from PSBT')
       
-      // Step 5: Broadcast transaction to Bitcoin network
-      const broadcastResult = await broadcastTransaction(transactionHex, 'testnet')
+      // Step 5: Broadcast transaction to Bitcoin network using auction network
+      const broadcastResult = await broadcastTransaction(transactionHex, auctionNetwork)
       
       if (!broadcastResult.success || !broadcastResult.txid) {
+        emitNetworkTelemetry('wizard.broadcast_failed', {
+          network: auctionNetwork,
+          error: broadcastResult.error,
+          errorCode: broadcastResult.errorCode,
+        })
         throw new Error(broadcastResult.error || 'Failed to broadcast transaction')
       }
       
       const txid = broadcastResult.txid
+      emitNetworkTelemetry('wizard.broadcast_success', {
+        network: auctionNetwork,
+        txid,
+      })
       console.log('Transaction broadcast:', txid)
       
       // Step 6: Confirm escrow with API
@@ -281,8 +491,8 @@ export default function CreateAuctionWizard() {
         confirmations: 0,
       }))
       
-      // Poll with progress callback
-      await pollForConfirmations(txid, 'testnet', {
+      // Poll with progress callback using auction network
+      await pollForConfirmations(txid, auctionNetwork, {
         targetConfirmations: 1,
         maxAttempts: 60,
         pollIntervalMs: 5000,
@@ -295,6 +505,12 @@ export default function CreateAuctionWizard() {
       })
       
       // Step 8: Success!
+      emitNetworkTelemetry('wizard.auction_created', {
+        network: auctionNetwork,
+        auctionId: psbtSigningState.auctionId,
+        txid,
+        success: true,
+      })
       setPsbtSigningState(prev => ({
         ...prev,
         stage: 'success',
@@ -304,13 +520,18 @@ export default function CreateAuctionWizard() {
       
     } catch (error) {
       console.error('PSBT signing workflow failed:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      emitNetworkTelemetry('wizard.signing_workflow_failed', {
+        network: auctionNetwork,
+        error: errorMessage,
+      })
       setPsbtSigningState(prev => ({
         ...prev,
         stage: 'error',
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: errorMessage,
       }))
     }
-  }, [psbtSigningState.psbt, psbtSigningState.auctionId, clearDraft])
+  }, [psbtSigningState.psbt, psbtSigningState.auctionId, auctionNetwork, clearDraft])
 
   const handleValuesChange = React.useCallback((v: any) => {
     setFormValues(v)
@@ -318,7 +539,7 @@ export default function CreateAuctionWizard() {
 
   // Show PSBT signing workflow UI if in progress
   if (psbtSigningState.stage !== 'idle') {
-    return <PsbtSigningWorkflow state={psbtSigningState} onSign={handleSignPsbt} onRetry={() => setPsbtSigningState({ stage: 'idle' })} />
+    return <PsbtSigningWorkflow state={psbtSigningState} onSign={handleSignPsbt} onRetry={() => setPsbtSigningState({ stage: 'idle' })} network={auctionNetwork} />
   }
 
   if (submittedPayload) {
@@ -371,9 +592,57 @@ export default function CreateAuctionWizard() {
   return (
     <div className="space-y-6">
       <header className="border-b border-gray-200 pb-4 dark:border-gray-700">
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Create Clearing Auction</h2>
-        <p className="text-gray-600 dark:text-gray-400 mt-1">Set up a uniform-price Dutch auction where multiple items are sold and all winners pay the same clearing price</p>
+        <div className="flex items-start justify-between gap-4 mb-2">
+          <div className="flex-1">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Create Clearing Auction</h2>
+            <p className="text-gray-600 dark:text-gray-400 mt-1">Set up a uniform-price Dutch auction where multiple items are sold and all winners pay the same clearing price</p>
+          </div>
+          <div className="flex flex-col items-end gap-2">
+            <NetworkBadge network={auctionNetwork} />
+            <button
+              type="button"
+              onClick={() => setShowNetworkSelector(!showNetworkSelector)}
+              className="text-sm text-blue-600 dark:text-blue-400 hover:underline focus:outline-none"
+              disabled={isVerifying || isSubmitting}
+            >
+              {showNetworkSelector ? 'Cancel' : 'Change Network'}
+            </button>
+          </div>
+        </div>
         <WizardPreviewButton type={type} values={formValues} className="mt-3" />
+        
+        {/* Network Selector Modal/Panel */}
+        {showNetworkSelector && (
+          <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+            <NetworkSelector
+              value={auctionNetwork}
+              onChange={handleNetworkChange}
+              disabled={isVerifying || isSubmitting}
+            />
+          </div>
+        )}
+        
+        {/* Wallet Network Change Notification */}
+        {showNetworkChangeNotification && detectedWalletNetworkChange && !showNetworkSelector && (
+          <NetworkChangeNotification
+            detectedNetwork={detectedWalletNetworkChange}
+            currentNetwork={auctionNetwork}
+            onAccept={handleAcceptWalletNetworkChange}
+            onDismiss={handleDismissWalletNetworkChange}
+            className="mt-4"
+          />
+        )}
+        
+        {/* Network Mismatch Warning */}
+        {hasNetworkMismatch && !showNetworkSelector && !showNetworkChangeNotification && (
+          <NetworkMismatchBanner
+            walletNetwork={walletNetwork!}
+            wizardNetwork={auctionNetwork}
+            onSwitchWizardToWallet={handleSwitchWizardToWallet}
+            onSwitchWalletToWizard={handleSwitchWalletToWizard}
+            className="mt-4"
+          />
+        )}
         
         {/* Wallet Connection Status */}
         {wallet ? (
@@ -1077,11 +1346,13 @@ function QuickTimingControls() {
 function PsbtSigningWorkflow({ 
   state, 
   onSign, 
-  onRetry 
+  onRetry,
+  network,
 }: { 
   state: any
   onSign: () => void
   onRetry: () => void
+  network: AppNetwork
 }) {
   const getStageInfo = () => {
     switch (state.stage) {
@@ -1183,12 +1454,12 @@ function PsbtSigningWorkflow({
           <div className="text-sm space-y-2 text-gray-700 dark:text-gray-300">
             <p className="break-all"><strong>TX ID:</strong> {state.txid}</p>
             <a 
-              href={getMempoolLink(state.txid, 'testnet')} 
+              href={getExplorerTxLink(state.txid, network)} 
               target="_blank" 
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700 underline"
             >
-              View on mempool.space →
+              View on explorer →
             </a>
             {state.confirmations !== undefined && (
               <p><strong>Confirmations:</strong> {state.confirmations}</p>
