@@ -15,6 +15,7 @@ import * as bip39 from 'bip39'
 import { BIP32Factory, type BIP32Interface } from 'bip32'
 import * as tinySecp256k1 from 'tiny-secp256k1'
 import * as bitcoin from 'bitcoinjs-lib'
+import { WebVHManager } from './webvh-manager'
 
 export type BitcoinNetwork = 'mainnet' | 'testnet' | 'signet' | 'regtest';
 
@@ -122,6 +123,7 @@ export class SecureDutchyDatabase {
   private clearingAuctions: Map<string, ClearingAuction> = new Map();
   private inscriptionEscrows: Map<string, { inscriptionId: string; status: string; details?: any; updatedAt: number }>
     = new Map();
+  public webvhManager: WebVHManager;
 
   constructor(public dbPath: string, mempoolClient?: MempoolClientLike) {
     const isMemory = !dbPath || dbPath.startsWith(':memory:') || dbPath.startsWith('file::memory')
@@ -135,6 +137,7 @@ export class SecureDutchyDatabase {
     }
     this.db = new Database(dbPath)
     this.mempoolClient = mempoolClient
+    this.webvhManager = new WebVHManager(this.db)
     this.initialize()
   }
 

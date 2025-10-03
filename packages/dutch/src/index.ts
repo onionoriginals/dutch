@@ -35,3 +35,5 @@ export const db = getDb()
 
 // Re-exports for API consumers
 export { SecureDutchyDatabase, getBitcoinNetwork } from './database'
+export { WebVHManager } from './webvh-manager'
+export type { DIDDocument, DIDJSONLEntry, CreateDIDOptions } from './webvh-manager'

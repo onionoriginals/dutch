@@ -527,6 +527,27 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
           return error('quantity, startPrice, minPrice, duration, sellerAddress required', 'VALIDATION_ERROR')
         }
 
+        // Automatically create a DID for new users
+        try {
+          const existingDID = database.webvhManager.getDIDByUserAddress(String(sellerAddress))
+          if (!existingDID) {
+            await database.webvhManager.createDID({
+              userAddress: String(sellerAddress),
+            })
+            logger.info('DID auto-created for new user', {
+              operation: 'auto-did-create',
+              userAddress: sellerAddress,
+            })
+          }
+        } catch (didError: any) {
+          logger.warn('Failed to auto-create DID for user', {
+            operation: 'auto-did-create-failed',
+            userAddress: sellerAddress,
+            error: didError.message,
+          })
+          // Continue with auction creation even if DID creation fails
+        }
+
         // ===== SECURITY: Server-side Inscription Ownership Verification =====
         // Verify each inscription is owned by the seller and is unspent
         // This prevents malicious actors from bypassing client-side checks
@@ -1074,6 +1095,27 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
           return error('Missing required fields', 'VALIDATION_ERROR')
         }
 
+        // Automatically create a DID for new users
+        try {
+          const existingDID = database.webvhManager.getDIDByUserAddress(String(sellerAddress))
+          if (!existingDID) {
+            await database.webvhManager.createDID({
+              userAddress: String(sellerAddress),
+            })
+            logger.info('DID auto-created for new user', {
+              operation: 'auto-did-create',
+              userAddress: sellerAddress,
+            })
+          }
+        } catch (didError: any) {
+          logger.warn('Failed to auto-create DID for user', {
+            operation: 'auto-did-create-failed',
+            userAddress: sellerAddress,
+            error: didError.message,
+          })
+          // Continue with auction creation even if DID creation fails
+        }
+
         const inscriptionRegex = /^[0-9a-fA-F]{64}i\d+$/
         if (!inscriptionRegex.test(String(asset))) {
           set.status = 400
@@ -1441,6 +1483,188 @@ export function createApp(dbInstance?: SecureDutchyDatabase) {
       ])
     })
 
+    // DID (Decentralized Identifier) endpoints
+    .post('/api/did/create', async ({ body, set }) => {
+      try {
+        const { userAddress, publicKeyMultibase, serviceEndpoints } = body
+        
+        if (!userAddress) {
+          set.status = 400
+          return error('userAddress required', 'VALIDATION_ERROR')
+        }
+
+        // Create DID using WebVHManager
+        const result = await database.webvhManager.createDID({
+          userAddress: String(userAddress),
+          publicKeyMultibase: publicKeyMultibase ? String(publicKeyMultibase) : undefined,
+          serviceEndpoints: serviceEndpoints || [],
+        })
+
+        logger.info('DID created', {
+          operation: 'did-create',
+          did: result.did,
+          userAddress,
+        })
+
+        return success({
+          did: result.did,
+          didDocument: result.didDocument,
+        })
+      } catch (err: any) {
+        logger.error('DID creation error', {
+          operation: 'did-create',
+          error: err?.message,
+        })
+        set.status = 500
+        return error(err?.message || 'internal_error', 'INTERNAL_ERROR')
+      }
+    }, {
+      body: t.Object({
+        userAddress: t.String(),
+        publicKeyMultibase: t.Optional(t.String()),
+        serviceEndpoints: t.Optional(t.Array(t.Object({
+          id: t.String(),
+          type: t.String(),
+          serviceEndpoint: t.Union([t.String(), UnknownRecord]),
+        }))),
+      }),
+      response: t.Union([
+        SuccessResponse(t.Object({
+          did: t.String(),
+          didDocument: UnknownRecord,
+        })),
+        ErrorResponse
+      ])
+    })
+    .get('/api/did/:userAddress', async ({ params, set }) => {
+      try {
+        const result = database.webvhManager.getDIDByUserAddress(String(params.userAddress))
+        
+        if (!result) {
+          set.status = 404
+          return error('DID not found for user', 'NOT_FOUND')
+        }
+
+        return success({
+          did: result.did,
+          didDocument: result.didDocument,
+        })
+      } catch (err: any) {
+        logger.error('DID retrieval error', {
+          operation: 'did-get',
+          error: err?.message,
+        })
+        set.status = 500
+        return error(err?.message || 'internal_error', 'INTERNAL_ERROR')
+      }
+    }, {
+      params: t.Object({ userAddress: t.String() }),
+      response: t.Union([
+        SuccessResponse(t.Object({
+          did: t.String(),
+          didDocument: UnknownRecord,
+        })),
+        ErrorResponse
+      ])
+    })
+    .get('/api/did/:userAddress/did.jsonl', async ({ params, set }) => {
+      try {
+        const result = database.webvhManager.getDIDByUserAddress(String(params.userAddress))
+        
+        if (!result) {
+          set.status = 404
+          return new Response('DID not found for user', { 
+            status: 404,
+            headers: { 'content-type': 'text/plain' }
+          })
+        }
+
+        logger.info('DID JSONL retrieved', {
+          operation: 'did-jsonl-get',
+          did: result.did,
+          userAddress: params.userAddress,
+        })
+
+        // Return the JSONL content with appropriate headers
+        return new Response(result.jsonl, {
+          headers: {
+            'content-type': 'application/jsonl',
+            'content-disposition': `attachment; filename="${result.did.replace('did:webvh:', '')}.jsonl"`,
+          }
+        })
+      } catch (err: any) {
+        logger.error('DID JSONL retrieval error', {
+          operation: 'did-jsonl-get',
+          error: err?.message,
+        })
+        return new Response('Internal server error', { 
+          status: 500,
+          headers: { 'content-type': 'text/plain' }
+        })
+      }
+    }, {
+      params: t.Object({ userAddress: t.String() })
+    })
+    .get('/api/did/resolve/:did', async ({ params, set }) => {
+      try {
+        // Extract DID from params (it may have the did:webvh: prefix or not)
+        const didParam = String(params.did)
+        const did = didParam.startsWith('did:') ? didParam : `did:webvh:${didParam}`
+        
+        const result = database.webvhManager.getDIDByDID(did)
+        
+        if (!result) {
+          set.status = 404
+          return error('DID not found', 'NOT_FOUND')
+        }
+
+        return success({
+          did: result.did,
+          didDocument: result.didDocument,
+        })
+      } catch (err: any) {
+        logger.error('DID resolution error', {
+          operation: 'did-resolve',
+          error: err?.message,
+        })
+        set.status = 500
+        return error(err?.message || 'internal_error', 'INTERNAL_ERROR')
+      }
+    }, {
+      params: t.Object({ did: t.String() }),
+      response: t.Union([
+        SuccessResponse(t.Object({
+          did: t.String(),
+          didDocument: UnknownRecord,
+        })),
+        ErrorResponse
+      ])
+    })
+    .get('/api/did/list', async () => {
+      try {
+        const dids = database.webvhManager.listDIDs()
+        return success({ dids })
+      } catch (err: any) {
+        logger.error('DID list error', {
+          operation: 'did-list',
+          error: err?.message,
+        })
+        return error(err?.message || 'internal_error', 'INTERNAL_ERROR')
+      }
+    }, {
+      response: t.Union([
+        SuccessResponse(t.Object({
+          dids: t.Array(t.Object({
+            id: t.String(),
+            did: t.String(),
+            userAddress: t.String(),
+            createdAt: t.Number(),
+            updatedAt: t.Number(),
+          })),
+        })),
+        ErrorResponse
+      ])
+    })
 
     // Serve static assets from Astro's dist for css/js/html requests
     .get('/*', async ({ request }) => {
