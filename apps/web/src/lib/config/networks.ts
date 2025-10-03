@@ -154,7 +154,11 @@ export function getWalletSupportedNetworks(): AppNetwork[] {
 export function walletNetworkToAppNetwork(
   walletNetwork: BitcoinNetworkType
 ): AppNetwork {
-  return walletNetwork.toLowerCase() as AppNetwork
+  const network = walletNetwork.toLowerCase() as AppNetwork
+  if (!getSupportedNetworks().includes(network)) {
+    throw new Error(`Unsupported wallet network: ${walletNetwork}`)
+  }
+  return network
 }
 
 /**
@@ -168,6 +172,7 @@ export function appNetworkToWalletNetwork(
 
 /**
  * Validate if an address belongs to a specific network
+ * Note: Testnet and signet share address prefixes and cannot be distinguished.
  */
 export function validateAddressForNetwork(
   address: string,
@@ -196,6 +201,7 @@ export function validateAddressForNetwork(
 
 /**
  * Detect network from address prefix
+ * Note: Returns testnet for tb1/m/n/2 addresses (signet shares these prefixes).
  */
 export function detectNetworkFromAddress(address: string): AppNetwork | null {
   for (const network of getSupportedNetworks()) {
@@ -256,6 +262,9 @@ export function parseNetworkFromUrl(defaultNetwork: AppNetwork = 'testnet'): App
  * Get mempool.space explorer link for a transaction
  */
 export function getExplorerTxLink(txid: string, network: AppNetwork): string {
+  if (!txid || typeof txid !== 'string') {
+    throw new Error('Invalid txid provided')
+  }
   const config = NETWORKS[network]
   return `${config.apis.explorer}/tx/${txid}`
 }
@@ -264,6 +273,9 @@ export function getExplorerTxLink(txid: string, network: AppNetwork): string {
  * Get mempool.space explorer link for an address
  */
 export function getExplorerAddressLink(address: string, network: AppNetwork): string {
+  if (!address || typeof address !== 'string') {
+    throw new Error('Invalid address provided')
+  }
   const config = NETWORKS[network]
   return `${config.apis.explorer}/address/${address}`
 }

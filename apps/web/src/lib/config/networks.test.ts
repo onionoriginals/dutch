@@ -47,6 +47,10 @@ describe('Network Configuration', () => {
       expect(walletNetworkToAppNetwork('Testnet')).toBe('testnet')
       expect(walletNetworkToAppNetwork('Signet')).toBe('signet')
     })
+
+    test('throws error for unsupported wallet network', () => {
+      expect(() => walletNetworkToAppNetwork('Invalid' as any)).toThrow('Unsupported wallet network')
+    })
   })
 
   describe('appNetworkToWalletNetwork', () => {
@@ -141,6 +145,11 @@ describe('Network Configuration', () => {
         `http://localhost:3002/tx/${txid}`
       )
     })
+
+    test('throws error for invalid txid', () => {
+      expect(() => getExplorerTxLink('', 'mainnet')).toThrow('Invalid txid provided')
+      expect(() => getExplorerTxLink(null as any, 'mainnet')).toThrow('Invalid txid provided')
+    })
   })
 
   describe('getExplorerAddressLink', () => {
@@ -153,6 +162,11 @@ describe('Network Configuration', () => {
       expect(getExplorerAddressLink(address, 'testnet')).toBe(
         `https://mempool.space/testnet/address/${address}`
       )
+    })
+
+    test('throws error for invalid address', () => {
+      expect(() => getExplorerAddressLink('', 'mainnet')).toThrow('Invalid address provided')
+      expect(() => getExplorerAddressLink(null as any, 'mainnet')).toThrow('Invalid address provided')
     })
   })
 

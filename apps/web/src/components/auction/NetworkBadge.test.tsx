@@ -39,12 +39,12 @@ describe('NetworkBadge', () => {
 
   test('shows icon by default', () => {
     const { container } = render(<NetworkBadge network="mainnet" />)
-    expect(container.querySelector('.w-2.h-2')).toBeInTheDocument()
+    expect(container.querySelector('span[aria-hidden="true"]')).toBeInTheDocument()
   })
 
   test('hides icon when showIcon is false', () => {
     const { container } = render(<NetworkBadge network="mainnet" showIcon={false} />)
-    expect(container.querySelector('.w-2.h-2')).not.toBeInTheDocument()
+    expect(container.querySelector('span[aria-hidden="true"]')).not.toBeInTheDocument()
   })
 
   test('applies custom className', () => {

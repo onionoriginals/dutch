@@ -358,6 +358,7 @@ export default function CreateAuctionWizard() {
           duration: duration,
           decrementInterval: values.decrementIntervalSeconds,
           sellerAddress: sellerAddress,
+          network: auctionNetwork,
         }),
       })
 

@@ -155,6 +155,8 @@ const regtest = appNetworkToWalletNetwork('regtest')
 
 Validates if an address belongs to a specific network.
 
+**Note**: Testnet and signet share identical address prefixes (`tb1`, `m`, `n`, `2`) per BIP325, so addresses cannot be reliably distinguished between these networks by prefix alone. The function will validate any testnet-prefixed address as valid for both testnet and signet.
+
 ```typescript
 const isValid = validateAddressForNetwork(
   'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh',
@@ -167,11 +169,17 @@ const isInvalid = validateAddressForNetwork(
   'mainnet'
 )
 // false
+
+// Both testnet and signet accept tb1 addresses
+validateAddressForNetwork('tb1q...', 'testnet')  // true
+validateAddressForNetwork('tb1q...', 'signet')   // true
 ```
 
 #### `detectNetworkFromAddress(address: string): AppNetwork | null`
 
 Auto-detects network from address prefix.
+
+**Note**: Returns `'testnet'` for addresses with `tb1`/`m`/`n`/`2` prefixes, even if they're intended for signet. This is due to the shared address prefixes per BIP325. For reliable network detection, use explicit network selection instead of relying on address prefix detection.
 
 ```typescript
 const network = detectNetworkFromAddress('bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh')
@@ -179,6 +187,9 @@ const network = detectNetworkFromAddress('bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx
 
 const unknown = detectNetworkFromAddress('invalid')
 // null
+
+// Testnet/signet addresses always return 'testnet' (first match)
+detectNetworkFromAddress('tb1q...')  // 'testnet' (not 'signet')
 ```
 
 ### Explorer Links

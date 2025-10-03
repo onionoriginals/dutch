@@ -31,7 +31,6 @@ export function NetworkSelector({
   showDescription = true,
 }: NetworkSelectorProps) {
   const supportedNetworks = getSupportedNetworks()
-  const selectedConfig = getNetworkConfig(value)
 
   return (
     <div className={className}>
