@@ -16,6 +16,7 @@ import { formatAddress } from '../../lib/wallet/walletAdapter'
 import { NetworkBadge } from './NetworkBadge'
 import { NetworkSelector } from './NetworkSelector'
 import { NetworkMismatchBanner } from './NetworkMismatchBanner'
+import { NetworkChangeNotification } from './NetworkChangeNotification'
 import {
   type AppNetwork,
   walletNetworkToAppNetwork,
@@ -89,6 +90,13 @@ export default function CreateAuctionWizard() {
   })
   
   const [showNetworkSelector, setShowNetworkSelector] = React.useState(false)
+  const [showNetworkChangeNotification, setShowNetworkChangeNotification] = React.useState(false)
+  const [detectedWalletNetworkChange, setDetectedWalletNetworkChange] = React.useState<AppNetwork | null>(null)
+  
+  // Track the last wallet network we synced from to detect changes
+  const lastSyncedWalletNetworkRef = React.useRef<AppNetwork | null>(
+    wallet ? walletNetworkToAppNetwork(wallet.network) : null
+  )
 
   const [formValues, setFormValues] = React.useState({} as any)
   const { restored, clearDraft } = useDraftPersistence(formValues)
@@ -108,18 +116,39 @@ export default function CreateAuctionWizard() {
   const [isSubmitting, setIsSubmitting] = React.useState(false)
   const [verificationError, setVerificationError] = React.useState<string | null>(null)
 
-  // Initialize auction network from wallet when wallet connects
+  // Detect wallet network changes and notify user
   React.useEffect(() => {
-    if (wallet && !showNetworkSelector) {
-      const walletAppNetwork = walletNetworkToAppNetwork(wallet.network)
-      setAuctionNetwork(walletAppNetwork)
+    if (!wallet) {
+      lastSyncedWalletNetworkRef.current = null
+      return
+    }
+    
+    const currentWalletNetwork = walletNetworkToAppNetwork(wallet.network)
+    const lastSyncedNetwork = lastSyncedWalletNetworkRef.current
+    
+    // If this is the first wallet connection, sync immediately without notification
+    if (lastSyncedNetwork === null) {
+      lastSyncedWalletNetworkRef.current = currentWalletNetwork
+      setAuctionNetwork(currentWalletNetwork)
       emitNetworkTelemetry('wizard.network_detected', {
-        network: walletAppNetwork,
+        network: currentWalletNetwork,
         walletNetwork: wallet.network,
-        source: 'wallet',
+        source: 'wallet_initial',
+      })
+      return
+    }
+    
+    // If wallet network changed and differs from current auction network, notify user
+    if (currentWalletNetwork !== lastSyncedNetwork && currentWalletNetwork !== auctionNetwork) {
+      setDetectedWalletNetworkChange(currentWalletNetwork)
+      setShowNetworkChangeNotification(true)
+      emitNetworkTelemetry('wizard.wallet_network_changed', {
+        oldNetwork: lastSyncedNetwork,
+        newNetwork: currentWalletNetwork,
+        currentAuctionNetwork: auctionNetwork,
       })
     }
-  }, [wallet, showNetworkSelector])
+  }, [wallet, auctionNetwork])
 
   const defaultValues = React.useMemo(() => {
     if (restored?.values) return restored.values as Record<string, unknown>
@@ -143,6 +172,11 @@ export default function CreateAuctionWizard() {
     setAuctionNetwork(newNetwork)
     setShowNetworkSelector(false)
     
+    // Update the last synced network if this matches the wallet
+    if (wallet && walletNetworkToAppNetwork(wallet.network) === newNetwork) {
+      lastSyncedWalletNetworkRef.current = newNetwork
+    }
+    
     // Update URL if supported
     if (typeof window !== 'undefined') {
       const url = new URL(window.location.href)
@@ -150,6 +184,31 @@ export default function CreateAuctionWizard() {
       window.history.replaceState({}, '', url.toString())
     }
   }, [auctionNetwork, wallet])
+  
+  // Handler for accepting wallet network change notification
+  const handleAcceptWalletNetworkChange = React.useCallback(() => {
+    if (detectedWalletNetworkChange) {
+      handleNetworkChange(detectedWalletNetworkChange)
+      lastSyncedWalletNetworkRef.current = detectedWalletNetworkChange
+      setShowNetworkChangeNotification(false)
+      setDetectedWalletNetworkChange(null)
+      emitNetworkTelemetry('wizard.wallet_network_change_accepted', {
+        network: detectedWalletNetworkChange,
+      })
+    }
+  }, [detectedWalletNetworkChange, handleNetworkChange])
+  
+  // Handler for dismissing wallet network change notification
+  const handleDismissWalletNetworkChange = React.useCallback(() => {
+    if (detectedWalletNetworkChange) {
+      setShowNetworkChangeNotification(false)
+      setDetectedWalletNetworkChange(null)
+      emitNetworkTelemetry('wizard.wallet_network_change_dismissed', {
+        detectedNetwork: detectedWalletNetworkChange,
+        keptNetwork: auctionNetwork,
+      })
+    }
+  }, [detectedWalletNetworkChange, auctionNetwork])
   
   // Handler for resolving network mismatch - switch wizard to wallet
   const handleSwitchWizardToWallet = React.useCallback(() => {
@@ -562,8 +621,19 @@ export default function CreateAuctionWizard() {
           </div>
         )}
         
+        {/* Wallet Network Change Notification */}
+        {showNetworkChangeNotification && detectedWalletNetworkChange && !showNetworkSelector && (
+          <NetworkChangeNotification
+            detectedNetwork={detectedWalletNetworkChange}
+            currentNetwork={auctionNetwork}
+            onAccept={handleAcceptWalletNetworkChange}
+            onDismiss={handleDismissWalletNetworkChange}
+            className="mt-4"
+          />
+        )}
+        
         {/* Network Mismatch Warning */}
-        {hasNetworkMismatch && !showNetworkSelector && (
+        {hasNetworkMismatch && !showNetworkSelector && !showNetworkChangeNotification && (
           <NetworkMismatchBanner
             walletNetwork={walletNetwork!}
             wizardNetwork={auctionNetwork}
